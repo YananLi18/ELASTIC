@@ -7,18 +7,18 @@ import random
 import pandas as pd
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--device', type=str, default='5', help='')
+parser.add_argument('--device', type=str, default='0', help='')
 parser.add_argument('--model', type=str, default='gwnet', help='adj type')
 parser.add_argument('--type', type=str, default='CPU', help='[CPU, UP]')
 parser.add_argument('--freq', type=str, default='15min', help='frequency')
-parser.add_argument('--data', type=str, default='CC', help='[site, NC, NW, ...]')
+parser.add_argument('--data', type=str, default='All_full', help='Directory where the data is located')
 parser.add_argument('--site', type=str, default='nanjing-cmcc', help='')
 parser.add_argument('--g_adjtype', type=str, default='all1', help='adj type of global adj [all1,dis,tem,rtt,identity]')
 parser.add_argument('--adjtype', type=str, default='all', help='adj type of local adj [all, phy, log, identity]')
 parser.add_argument('--addaptadj', action='store_false', default=True, help='whether add adaptive adj for global stage')
 parser.add_argument('--contrastive', type=str, default='RNC', help='contrastive loss function[RNC,NT-Xent,NT-Logistic,Margin-Triplet]')
 
-parser.add_argument('--rate', type=float, default=0.5, help='network transmission rate[0.5, 2, 6.25]')
+parser.add_argument('--rate', type=float, default=2, help='network transmission rate[0.5, 2, 6.25]')
 
 parser.add_argument('--dis_thre', type=float, default=4e5, help='adj type')
 parser.add_argument('--rtt_thre', type=float, default=30, help='adj type')
