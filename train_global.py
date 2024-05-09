@@ -57,7 +57,7 @@ torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
 
-def main():#全局阶段 训练每个边缘节点的 聚合层
+def main():#The global phase trains the aggregation layer for each edge node.
     if not args.sever:
         args.root_path = './data/'
     device = torch.device('cuda:' + args.device)
@@ -84,7 +84,7 @@ def main():#全局阶段 训练每个边缘节点的 聚合层
     ins = pd.read_csv(args.root_path + 'e_vm_instance.csv', usecols=['uuid', 'ens_region_id', 'cores'])
     vmr = pd.merge(vmlist, ins, how='left', left_on='vm', right_on='uuid')
     idx = (vmr['ens_region_id'].values == args.site)
-    sensor_num = sum(idx)  # local model 里面多少VMs的workload汇聚一个edge node workload
+    sensor_num = sum(idx)  
     idx_v = g_vmlist[g_vmlist['ens_region_id'] == args.site].index.to_list()[0]
     print(f"There are {sensor_num} VMs in {args.site} of {args.data}")
     l_dataloader = util.load_dataset(args.root_path, args.type, args.data, args.batch_size, args.seq_length,
@@ -93,7 +93,6 @@ def main():#全局阶段 训练每个边缘节点的 聚合层
                             args.learning_rate, args.weight_decay, device, g_supports,l_supports, args.decay,
                             sensor_num, idx_v, args.gat, args.addaptadj, args.type, args.contrastive)
     print(args)
-    # print(engine.model.state_dict()['first_linear.weight'])
     # check parameters file
     params_path = args.save + args.model + '/whole/' + args.data + '/' + args.site + '/' + args.type + '/' + args.freq
     if os.path.exists(params_path) and not args.force:
@@ -117,7 +116,7 @@ def main():#全局阶段 训练每个边缘节点的 聚合层
         train_rmse = []
         train_r2 = []
         t1 = time.time()
-        #要保证g和l的dataloader数据集元素数量相同，即dataset的长度
+       
         permutation = np.random.permutation(g_dataloader['train_loader'].size)
         xg, yg = g_dataloader['train_loader'].xs[permutation], g_dataloader['train_loader'].ys[permutation]
         g_dataloader['train_loader'].xs = xg

@@ -282,7 +282,7 @@ class SATT_2(nn.Module):
         return logits
   
 
-class TATT_1(nn.Module):#根据时间信息学习，关注输入序列的不同部分，并对关注序列进行批量归一化处理。这是一种帮助模型关注输入数据中相关时间信息的机制
+class TATT_1(nn.Module):
     def __init__(self,c_in,num_nodes,tem_size):
         super(TATT_1,self).__init__()
         self.conv1=Conv2d(c_in, 1, kernel_size=(1, 1),
@@ -290,10 +290,10 @@ class TATT_1(nn.Module):#根据时间信息学习，关注输入序列的不同�
         self.conv2=Conv2d(num_nodes, 1, kernel_size=(1, 1),
                           stride=(1,1), bias=False)
         self.w=nn.Parameter(torch.rand(num_nodes,c_in), requires_grad=True)
-        nn.init.xavier_uniform_(self.w)#线性变换
-        self.b=nn.Parameter(torch.zeros(tem_size,tem_size), requires_grad=True)#线性偏置
+        nn.init.xavier_uniform_(self.w)
+        self.b=nn.Parameter(torch.zeros(tem_size,tem_size), requires_grad=True)
         
-        self.v=nn.Parameter(torch.rand(tem_size,tem_size), requires_grad=True)#用于计算注意力分数
+        self.v=nn.Parameter(torch.rand(tem_size,tem_size), requires_grad=True)
         nn.init.xavier_uniform_(self.v)
         self.bn=BatchNorm1d(tem_size)
         
@@ -302,14 +302,14 @@ class TATT_1(nn.Module):#根据时间信息学习，关注输入序列的不同�
         f1 = self.conv1(c1).squeeze()#b,l,n
         
         c2 = seq.permute(0,2,1,3)#b,c,n,l->b,n,c,l
-        #print(c2.shape)
+        
         f2 = self.conv2(c2).squeeze()#b,c,n
          
-        logits = torch.sigmoid(torch.matmul(torch.matmul(f1,self.w),f2)+self.b)#先取f1和f2的点积，然后加上偏置项b，非线性化。
-        logits = torch.matmul(self.v,logits)                                   #与可学习参数v相乘，进一步调整学习注意参数
+        logits = torch.sigmoid(torch.matmul(torch.matmul(f1,self.w),f2)+self.b)
+        logits = torch.matmul(self.v,logits)                                   
         logits = logits.permute(0,2,1).contiguous()
         logits=self.bn(logits).permute(0,2,1).contiguous()
-        coefs = torch.softmax(logits,-1)# coefs表示序列中的每个元素应从其他元素中获得多少关注。 coefficients =系数
+        coefs = torch.softmax(logits,-1)
         return coefs   
 
 
@@ -329,7 +329,7 @@ class ST_BLOCK_2_r(nn.Module):
                           stride=(1,1), bias=True)
         self.bn=BatchNorm2d(c_out)
         self.c_out=c_out
-        #self.bn=LayerNorm([c_out,num_nodes,tem_size])
+      
         
         
     def forward(self,x,supports):
@@ -342,7 +342,7 @@ class ST_BLOCK_2_r(nn.Module):
         c=Variable(torch.zeros((1,shape[0]*shape[2],shape[3]))).cuda()
         hidden=(h,c)
         S_coef=S_coef.permute(0,2,1,3).contiguous().view(shape[0]*shape[2],shape[1],shape[3])
-        S_coef=F.dropout(S_coef,0.5,self.training) #2020/3/28/22:17,试验下效果
+        S_coef=F.dropout(S_coef,0.5,self.training) 
         _,hidden=self.LSTM(S_coef,hidden)
         adj_out=hidden[0].squeeze().view(shape[0],shape[2],shape[3]).contiguous()
         adj_out1=(adj_out)*supports
@@ -356,81 +356,6 @@ class ST_BLOCK_2_r(nn.Module):
         x_1=torch.einsum('bcnl,blq->bcnq',x_1,T_coef)
         out=self.bn(F.leaky_relu(x_1)+x_input)
         return out,adj_out,T_coef
-
-
-### DGCN_GAT
-# class GraphAttentionLayer(nn.Module):
-#     """
-#     Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
-#     """
-#
-#     def __init__(self, in_features,out_features,length,Kt, dropout, alpha, concat=True):
-#         super(GraphAttentionLayer, self).__init__()
-#         self.dropout = dropout
-#         self.in_features = in_features
-#         self.out_features = out_features
-#         self.length = length
-#         self.alpha = alpha
-#         self.concat = concat
-#
-#         self.conv0=Conv2d(self.in_features, self.out_features, kernel_size=(1, Kt),padding=(0,1),
-#                           stride=(1,1), bias=True)
-#
-#         self.conv1=Conv1d(self.out_features*self.length, 1, kernel_size=1,
-#                           stride=1, bias=False)
-#         self.conv2=Conv1d(self.out_features*self.length, 1, kernel_size=1,
-#                           stride=1, bias=False)
-#
-#         self.leakyrelu = nn.LeakyReLU(self.alpha)
-#
-#     def forward(self, input, adj):
-#         '''
-#         :param input: 输入特征 (batch,in_features,nodes,length)->(batch,in_features*length,nodes)
-#         :param adj:  邻接矩阵 (batch,batch)
-#         :return: 输出特征 (batch,out_features)
-#         '''
-#         input=self.conv0(input)
-#         shape=input.shape
-#         input1=input.permute(0,1,3,2).contiguous().view(shape[0],-1,shape[2]).contiguous()
-#
-#         f_1=self.conv1(input1)
-#         f_2=self.conv1(input1)
-#
-#         logits = f_1 + f_2.permute(0,2,1).contiguous()
-#         attention = F.softmax(self.leakyrelu(logits)+adj, dim=-1)  # (batch,nodes,nodes)
-#         #attention1 = F.dropout(attention, self.dropout, training=self.training) # (batch,nodes,nodes)
-#         attention=attention.transpose(-1,-2)
-#         h_prime = torch.einsum('bcnl,bnq->bcql',input,attention) # (batch,out_features)
-#         return h_prime,attention
-#
-# class GAT(nn.Module):
-#     def __init__(self, nfeat, nhid, dropout, alpha, nheads,length,Kt):
-#         """
-#         Dense version of GAT.
-#         :param nfeat: 输入特征的维度
-#         :param nhid:  输出特征的维度
-#         :param nclass: 分类个数
-#         :param dropout: dropout
-#         :param alpha: LeakyRelu中的参数
-#         :param nheads: 多头注意力机制的个数
-#         """
-#         super(GAT, self).__init__()
-#         self.dropout = dropout
-#
-#         self.attentions = [GraphAttentionLayer(nfeat, nhid,length=length,Kt=Kt, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
-#         for i, attention in enumerate(self.attentions):
-#             self.add_module('attention_{}'.format(i), attention)
-#
-#         #self.out_att = GraphAttentionLayer(nhid * nheads, nclass, dropout=dropout, alpha=alpha, concat=False)
-#
-#     def forward(self, x, adj):
-#         fea=[]
-#         for att in self.attentions:
-#             f,S_coef=att(x, adj)
-#             fea.append(f)
-#         x = torch.cat(fea, dim=1)
-#         #x = torch.mean(x,-1)
-#         return x,S_coef
 
 
 
@@ -486,8 +411,7 @@ class ST_BLOCK_4(nn.Module):
         self.c_out=c_out
         self.conv_1=Conv2d(c_in, c_out, kernel_size=(1, 1),
                           stride=(1,1), bias=True)
-        #self.conv_2=Conv2d(c_out//2, c_out, kernel_size=(1, 1),
-          #                stride=(1,1), bias=True)
+       
 
     def forward(self,x,supports):
         x_input1=self.conv_1(x)
@@ -667,7 +591,7 @@ class GraphAttentionLayer(nn.Module):
         a_input = torch.cat([h.repeat(1, 1, N).view(-1, N * N, self.out_features),
                              h.repeat(1, N, 1)], dim=-1).view(-1, N, N, 2 * self.out_features)
 
-        # [B, N, N, 1] => [B, N, N] 图注意力的相关系数（未归一化）
+        # [B, N, N, 1] => [B, N, N] 
         e = self.leakyrelu(torch.matmul(a_input, self.a).squeeze(3))
 
         zero_vec = -9e15 * torch.ones_like(e)
@@ -681,16 +605,6 @@ class GraphAttentionLayer(nn.Module):
         else:
             return h_prime
 
-    # def _prepare_attentional_mechanism_input(self, Wh):
-    #     # Wh.shape (N, out_feature)
-    #     # self.a.shape (2 * out_feature, 1)
-    #     # Wh1&2.shape (N, 1)
-    #     # e.shape (N, N)
-    #     Wh1 = torch.matmul(Wh, self.a[:self.out_features, :])
-    #     Wh2 = torch.matmul(Wh, self.a[self.out_features:, :])
-    #     # broadcast add
-    #     e = Wh1 + Wh2.T
-    #     return self.leakyrelu(e)
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
@@ -748,29 +662,28 @@ class nconv(nn.Module):
         super(nconv, self).__init__()
 
     def forward(self, x, A):
-        A = A.transpose(-1, -2)                     #交换最后两个维度来转置邻接矩阵 `A`
-        # print("x:",x.shape,"A:",A.shape)
+        A = A.transpose(-1, -2)            
         x = torch.einsum('ncvl,vw->ncwl', (x, A))
-        return x.contiguous()                       #返回更新后的张量 x。contiguous方法用于确保张量存储在连续的内存块中
+        return x.contiguous()                      
 
 class nconv_inverse(nn.Module):
     def __init__(self):
         super(nconv_inverse, self).__init__()
 
     def forward(self, y, A):
-        # 将A转换为概率分布，确保其行可逆
+
         A_rowsum = A.sum(-1)
         A_normalized = A / A_rowsum.unsqueeze(-1)
-        # 计算A的伪逆
+
         A_pinv = torch.pinverse(A_normalized.transpose(-1, -2))
-        # 尝试逆转图卷积操作
+
         x_recovered = torch.einsum('ncwl,vw->ncvl', (y, A_pinv))
         return x_recovered.contiguous()
     
 class linear(nn.Module):
     def __init__(self, c_in, c_out):
         super(linear, self).__init__()
-        self.mlp = torch.nn.Conv2d(c_in, c_out, kernel_size=(1, 1), padding=(0, 0), stride=(1, 1), bias=True)#bias表示卷积层将学习一个额外的偏置参数。
+        self.mlp = torch.nn.Conv2d(c_in, c_out, kernel_size=(1, 1), padding=(0, 0), stride=(1, 1), bias=True)
 
     def forward(self, x):
         return self.mlp(x)
@@ -793,13 +706,13 @@ class multi_gcn(nn.Module):
         for a in support:
             x1 = self.nconv(x, a)           #'ncvl,vw->ncwl'
             out.append(x1)
-            for k in range(2, self.order + 1):#k指邻接矩阵的幂次。例如，当k=2时，计算x1与邻接矩阵平方的卷积。目的是获取不同领域的信息
+            for k in range(2, self.order + 1):
                 x2 = self.nconv(x1, a)
                 out.append(x2)
                 x1 = x2
 
-        h = torch.cat(out, dim=1)#代码会沿着通道维度dim=1将out列表中的所有中间结果连接起来。这样就创建了一个具有扩展通道维度的特征张量 `h`。
-        h = self.mlp(h)#学习复杂的特征变换
+        h = torch.cat(out, dim=1)
+        h = self.mlp(h)
         h = F.dropout(h, self.dropout, training=self.training)
         return h
 class mgcn_poly(nn.Module):
@@ -813,22 +726,21 @@ class mgcn_poly(nn.Module):
     def forward(self, x0, support):
         '''
         x in shape [batch, site, 1 , seq_len]
-        need [b,site, site , len]
         '''
         x = x0.repeat(1, 1, x0.size(1), 1)
         out = [x]
         for a in support:
             x1 = self.nconv(x, a)           #'ncvl,vw->ncwl'
             out.append(x1)
-            for k in range(2, self.order + 1):#k指邻接矩阵的幂次。例如，当k=2时，计算x1与邻接矩阵平方的卷积。目的是获取不同领域的信息
+            for k in range(2, self.order + 1):
                 x2 = self.nconv(x1, a)
                 out.append(x2)
                 x1 = x2
 
-        h = torch.cat(out, dim=1)#代码会沿着通道维度dim=1将out列表中的所有中间结果连接起来。这样就创建了一个具有扩展通道维度的特征张量 `h`。
-        h = self.mlp(h)#学习复杂的特征变换 [b,site*5,site,len]--->[b,1,site,len]
-        y = h[:, :, 0, :].unsqueeze(2)#第三维度恢复到1 [b,1,site,len]--->[b,1,1,len]
-        return y # 
+        h = torch.cat(out, dim=1)
+        h = self.mlp(h)
+        y = h[:, :, 0, :].unsqueeze(2) 
+        return y 
     
 class mgcn_depoly(nn.Module):
     def __init__(self, c_in, c_out, support_len=3, order=2):
@@ -841,23 +753,19 @@ class mgcn_depoly(nn.Module):
     def forward(self, y0):
         '''
         x in shape [batch, 1, 1 , seq_len]
-        need [b,1,site,len]
         '''
         h = y0.repeat(1, 1, self.org_len, 1)
         h_inv = self.inv_mlp(h)
         out_inv = torch.split(h_inv, int(self.org_len), dim=1)
         x = out_inv[0]
         x0 = x[:, :, 0, :].unsqueeze(2)
-        return x0 # [b,site,1,len]
+        return x0 
 class nconv_batch(nn.Module):
     def __init__(self):
         super(nconv_batch, self).__init__()
 
     def forward(self,x, A):
         A=A.transpose(-1,-2)
-        #try:
-       #     x = torch.einsum('ncvl,vw->ncwl',(x,A))
-        #except:
         x = torch.einsum('ncvl,nvw->ncwl',(x,A))
         return x.contiguous()
     
@@ -956,24 +864,22 @@ class multi_gcn_batch(nn.Module):
         h = F.dropout(h, self.dropout, training=self.training)
         return h
 
-class gate(nn.Module): #model6 —— H_GCN_wdf —— 门控 根据“seq_cluster”中的信息调节或调整“seq”中的特征
+class gate(nn.Module): #
     def __init__(self,c_in):
         super(gate,self).__init__()
         self.conv1=Conv2d(c_in, c_in//2, kernel_size=(1, 1),
-                          stride=(1,1), bias=True)#它将输入通道c_in的数量减少一半。这是稍后在“正向”方法中应用于级联张量的线性变换
+                          stride=(1,1), bias=True)
 
         
-    #可用于特征选通或通道自适应，这取决于选通模块如何集成到更大的神经网络架构中。它通常用于控制网络不同部分之间的信息流，或基于来自另一部分的信息调整来自网络一部分的特征。
+    
     def forward(self,seq,seq_cluster):
         
-        #x=torch.cat((seq_cluster,seq),1)     #门接受两个输入，seq和seq_cluster，沿通道维度连接它们。这种串联允许模块组合来自两个不同来源的信息
-        #gate=torch.sigmoid(self.conv1(x))    #将1x1卷积应用于级联张量。将卷积的结果与原始seq连接起来。
         out=torch.cat((seq,(seq_cluster)),1)
         
         return out
            
     
-class Transmit(nn.Module): #trainer7 —— H_GCN —— 线性变换下，cluster对本地的影响
+class Transmit(nn.Module): 
     def __init__(self,c_in,tem_size,transmit,num_nodes,cluster_nodes):
         super(Transmit,self).__init__()
         self.conv1=Conv2d(c_in, 1, kernel_size=(1, 1),
@@ -985,7 +891,7 @@ class Transmit(nn.Module): #trainer7 —— H_GCN —— 线性变换下，clust
         self.b=nn.Parameter(torch.zeros(num_nodes,cluster_nodes), requires_grad=True)
         self.c_in=c_in
         self.transmit=transmit
-    #学习和控制在神经网络的前向传递过程中信息如何在两个输入张量之间流动或传输。在网络的不同部分需要以受控和学习的方式进行通信或交换信息
+
     def forward(self,seq,seq_cluster):
         
         c1 = seq
@@ -998,7 +904,7 @@ class Transmit(nn.Module): #trainer7 —— H_GCN —— 线性变换下，clust
         logits = logits - a
         logits = torch.sigmoid(logits)
         
-        coefs = (logits)*self.transmit  #coeffes 可以被视为可学习的权重，其确定seq_cluster中的每个元素对seq中的相应元素的强度或影响
+        coefs = (logits)*self.transmit  
         return coefs    
 
 class T_cheby_conv_ds_1(nn.Module):
@@ -1108,67 +1014,21 @@ class GCNPool_dynamic(nn.Module):
 
 
 
-# class GCNPool_h(nn.Module):
-#     def __init__(self,c_in,c_out,num_nodes,tem_size,
-#                  Kt,dropout,pool_nodes,support_len=3,order=2):
-#         super(GCNPool_h,self).__init__()
-#         self.time_conv=Conv2d(c_in, 2*c_out, kernel_size=(1, Kt),padding=(0,0),
-#                           stride=(1,1), bias=True,dilation=2)
-#
-#         self.multigcn=multi_gcn_time(c_out,2*c_out,Kt,dropout,support_len,order)
-#         self.multigcn1=multi_gcn_batch(c_out,2*c_out,Kt,dropout,support_len,order)
-#         self.num_nodes=num_nodes
-#         self.tem_size=tem_size
-#         self.TAT=TATT_1(c_out,num_nodes,tem_size)
-#         self.c_out=c_out
-#         #self.bn=LayerNorm([c_out,num_nodes,tem_size])
-#         self.bn=BatchNorm2d(c_out)
-#
-#         self.conv1=Conv2d(c_in, c_out, kernel_size=(1, 1),
-#                           stride=(1,1), bias=True)
-#
-#         self.dynamic_gcn=T_cheby_conv_ds_1(c_out,2*c_out,order+1,Kt)
-#         self.gate=gate1(2*c_out)
-#
-#     def forward(self,x,support,A):
-#         residual = self.conv1(x)
-#
-#         x=self.time_conv(x)
-#         x1,x2=torch.split(x,[self.c_out,self.c_out],1)
-#         x=torch.tanh(x1)*torch.sigmoid(x2)
-#         #print(x.shape)
-#         #dynamic_adj=self.SATT(x)
-#         new_support=[]
-#         new_support.append(support[0]+A)
-#         new_support.append(support[1]+A)
-#         new_support.append(support[2]+A)
-#         x=self.multigcn1(x,new_support)
-#         x1,x2=torch.split(x,[self.c_out,self.c_out],1)
-#         x=torch.tanh(x1)*(torch.sigmoid(x2))
-#
-#
-#         T_coef=self.TAT(x)
-#         T_coef=T_coef.transpose(-1,-2)
-#         x=torch.einsum('bcnl,blq->bcnq',x,T_coef)
-#
-#         out=self.bn(x+residual[:, :, :, -x.size(3):])
-#         return out
-   
            
 class GCNPool(nn.Module):
     def __init__(self,c_in,c_out,num_nodes,tem_size,
                  Kt,dropout,pool_nodes,support_len=3,order=2):
         super(GCNPool,self).__init__()
         self.time_conv=Conv2d(c_in, 2*c_out, kernel_size=(1, Kt),padding=(0,0),
-                          stride=(1,1), bias=True,dilation=2)#沿时间轴执行的二维卷积
-        #（batch_size、c_in、num_nodes、tem_size）-》（batch_size、2*c_out、num_nodes、tem_size）。卷积的核=(1, Kt)，扩张为 2。
-        self.multigcn=multi_gcn_time(c_out,2*c_out,Kt,dropout,support_len,order)#在时域中执行多头图卷积
+                          stride=(1,1), bias=True,dilation=2)#
+        
+        self.multigcn=multi_gcn_time(c_out,2*c_out,Kt,dropout,support_len,order)
         
         self.num_nodes=num_nodes
         self.tem_size=tem_size
         self.TAT=TATT_1(c_out,num_nodes,tem_size)
         self.c_out=c_out
-        #self.bn=LayerNorm([c_out,num_nodes,tem_size])
+       
         self.bn=BatchNorm2d(c_out)
         
         self.conv1=Conv2d(c_in, c_out, kernel_size=(1, 1),
@@ -1181,19 +1041,19 @@ class GCNPool(nn.Module):
         residual = self.conv1(x)
         
         x=self.time_conv(x)
-        x1,x2=torch.split(x,[self.c_out,self.c_out],1)#二维时空卷积后把结果分成两个部分
-        x=torch.tanh(x1)*torch.sigmoid(x2)            #进行非线性时空变换
+        x1,x2=torch.split(x,[self.c_out,self.c_out],1)
+        x=torch.tanh(x1)*torch.sigmoid(x2)           
         
         
-        x=self.multigcn(x,support)        #时间特征多头卷积
-        x1,x2=torch.split(x,[self.c_out,self.c_out],1)#再次拆分
-        x=torch.tanh(x1)*(torch.sigmoid(x2)) #再次非线性时空变换
-        #x=F.dropout(x,0.3,self.training)
+        x=self.multigcn(x,support)       
+        x1,x2=torch.split(x,[self.c_out,self.c_out],1)
+        x=torch.tanh(x1)*(torch.sigmoid(x2)) 
+       
         
-        T_coef=self.TAT(x)#计算时态注意力系数 `T_coef`，一种时态注意力机制。
+        T_coef=self.TAT(x)
         T_coef=T_coef.transpose(-1,-2)
         x=torch.einsum('bcnl,blq->bcnq',x,T_coef)
-        out=self.bn(x+residual[:, :, :, -x.size(3):])#通过将注意力加权特征 x 添加到残差张量并应用批量归一化self.bn，得到输出张量。
+        out=self.bn(x+residual[:, :, :, -x.size(3):])
         return out
         
 
@@ -1281,11 +1141,7 @@ class EncoderLayerI(nn.Module):
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x, attn_mask=None):
-        # x [B, L, D]
-        # x = x + self.dropout(self.attention(
-        #     x, x, x,
-        #     attn_mask = attn_mask
-        # ))
+       
         new_x, attn = self.attention(
             x, x, x,
             attn_mask = attn_mask
@@ -1565,8 +1421,8 @@ class FixedEmbedding(nn.Module):
         position = torch.arange(0, c_in).float().unsqueeze(1)
         div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
 
-        w[:, 0::2] = torch.sin(position * div_term)#正弦值填偶数列
-        w[:, 1::2] = torch.cos(position * div_term)#余弦值填奇数列
+        w[:, 0::2] = torch.sin(position * div_term)
+        w[:, 1::2] = torch.cos(position * div_term)
 
         self.emb = nn.Embedding(c_in, d_model)
         self.emb.weight = nn.Parameter(w, requires_grad=False)
@@ -1591,14 +1447,6 @@ class TemporalEmbedding(nn.Module):
     
     def forward(self, x):
         x = x.long()
-        #minute_x = self.minute_embed(x[:,:,4]) if hasattr(self, 'minute_embed') else 0.
-        #hour_x = self.hour_embed(x[:,:,3])
-        #weekday_x = self.weekday_embed(x[:,:,2])
-        #day_x = self.day_embed(x[:,:,1])
-        #month_x = self.month_embed(x[:,:,0])
-       
-        #return hour_x + weekday_x + day_x + month_x + minute_x
-        
         minute_x = self.minute_embed(x[:,:,3]) if hasattr(self, 'minute_embed') else 0.
         hour_x = self.hour_embed(x[:,:,2])
         weekday_x = self.weekday_embed(x[:,:,1])
@@ -1622,22 +1470,21 @@ class DataEmbedding(nn.Module):
     def __init__(self, c_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
         super(DataEmbedding, self).__init__()
 
-        self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)#通过一维卷积投影到嵌入维度
-        self.position_embedding = PositionalEmbedding(d_model=d_model)#局部时间戳（位置信息）
-        self.temporal_embedding = TemporalEmbedding(d_model=d_model, embed_type=embed_type, freq=freq  #全局时间戳，分层时间戳：分时周月年+不可知时间戳：事件假期
+        self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
+        self.position_embedding = PositionalEmbedding(d_model=d_model)
+        self.temporal_embedding = TemporalEmbedding(d_model=d_model, embed_type=embed_type, freq=freq  
                                                     ) if embed_type!='timeF' else TimeFeatureEmbedding(
                                                     d_model=d_model, embed_type=embed_type, freq=freq)
     
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, x_mark):
-        #x [64,12,66]             [64,24,66]
-        #xmark [64,12,5]
-        a = self.value_embedding(x)#[64,12,512] [64,24,512]
-        b = self.position_embedding(x)#[1,12,512] [1,24,512]
-        c = self.temporal_embedding(x_mark)#[64,12,512] [64,12,512]
-        x = a + b + c#x [64,12,512]
-        #x = self.value_embedding(x) + self.position_embedding(x) + self.temporal_embedding(x_mark)
+       
+        a = self.value_embedding(x)
+        b = self.position_embedding(x)
+        c = self.temporal_embedding(x_mark)
+        x = a + b + c
+       
         return self.dropout(x)
 
 # Autoformer
@@ -2017,8 +1864,8 @@ class GenericBasis(nn.Module):
         self.forecast_size = forecast_size
 
     def forward(self, theta):
-        #a = theta # [64,1,194,24]
-        #b, c = theta[:,: ,: , :self.backcast_size], theta[:, :, :, -self.forecast_size:] # [64,1,194,24],[64,1,194,24]
+        #a = theta 
+        #b, c = theta[:,: ,: , :self.backcast_size], theta[:, :, :, -self.forecast_size:] #
         return theta[:,: ,: , :self.backcast_size], theta[:, :, :, -self.forecast_size:]
 
 # TimesNet
@@ -2332,8 +2179,8 @@ class NHITSBlock(nn.Module):
 
         self.pooling_layer = nn.MaxPool2d(kernel_size=(1, pool_kernel_size), stride=(1, pool_kernel_size))
     def forward(self, x):
-        x = self.pooling_layer(x)  # 应用池化
-        # x = x.reshape(x.size(0), -1)  # 展平以适应线性层
+        x = self.pooling_layer(x)  
+        # x = x.reshape(x.size(0), -1)  
         for layer in self.layers:
             x = torch.relu(layer(x))
         theta = self.basis_parameters(x)
@@ -2349,7 +2196,7 @@ class Mish(nn.Module):
 class Swish(nn.Module):
     def __init__(self):
         super(Swish, self).__init__()
-        self.beta = nn.Parameter(torch.ones(1))  # 初始化为1
+        self.beta = nn.Parameter(torch.ones(1)) 
 
     def forward(self, x):
         return x * torch.sigmoid(self.beta * x)

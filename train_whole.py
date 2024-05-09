@@ -66,7 +66,7 @@ torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
 
-def iteronmodel(g_dataloader, dataloader, idx, gmodel, device):#两个数据加载器g_dataloader和dataloader、一个索引张量idx、一个模型gmodel和一个设备device。
+def iteronmodel(g_dataloader, dataloader, idx, gmodel, device):
     lst = []
     for (x, y, _, _), (x1, y1, _, _) in zip(g_dataloader.get_iterator(), dataloader.get_iterator()):
         testx = torch.Tensor(x).to(device)
@@ -77,11 +77,11 @@ def iteronmodel(g_dataloader, dataloader, idx, gmodel, device):#两个数据加�
         testy1 = torch.Tensor(y1).to(device, dtype=torch.float)
         testy1 = testy1.transpose(1, 3)
         with torch.no_grad():
-            if args.glob_m:#gwnet_lg 根据testx1来规范和格式化testx的形态。
-                preds,_,_ = gmodel.model(testx, testx1, testy1[:, 0, :, :])  # output = [batch_size, 12, num_nodes, 1]
+            if args.glob_m:
+                preds,_,_ = gmodel.model(testx, testx1, testy1[:, 0, :, :])  
             else:
-                preds = torch.Tensor(y).to(device)#预测结果已经在 `y` 中
-            lst.append(torch.index_select(preds, 2, idx))#从每批预测中选择一个子集。这种选择可能会用于提取特定节点的预测结果。 按第三维输出行，输出idx索引的行
+                preds = torch.Tensor(y).to(device)
+            lst.append(torch.index_select(preds, 2, idx))
     return lst
 
 
@@ -100,9 +100,7 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
                                      args.seq_length, args.pred_len, args.scaler)
     g_supports = [torch.tensor(i).float().to(device) for i in g_adj_mx]
     g_scaler = g_dataloader['scaler'] if args.scaler else None
-    # g_engine = trainer1(g_scaler, args.in_dim, args.seq_length, g_sensor_num, args.nhid, args.dropout,
-    # args.learning_rate, args.weight_decay, device, g_supports, args.decay, args.gat, args.addaptadj)
-
+   
     # Local model init
     vmlist = pd.read_csv(args.root_path + args.data + '/' + args.freq + '/' + 'vmlist.csv')
     ins = pd.read_csv(args.root_path + 'e_vm_instance.csv', usecols=['uuid', 'ens_region_id', 'cores'])
@@ -155,8 +153,6 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
                                     args.learning_rate, args.weight_decay, device, supports, args.decay, args.data,
                                     args.site, args.gat, args.addaptadj, args.type, args.disagg_type)
     print(args)
-    # print(engine.model.state_dict()['final_linear.weight'])
-    # print(engine.model.state_dict()['W'].data)
     # check parameters file
     params_path = args.save + args.model + '/whole/' + args.data + '/' + args.site + '/' + args.type + '/' + args.freq \
                   + '/' + args.adjtype
@@ -167,22 +163,20 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
             shutil.rmtree(params_path)
         os.makedirs(params_path)
         print('Create params directory %s' % (params_path))
-    #加载一个预先训练好的全局模型，并用它来转换数据,用转换后的数据创建新的数据加载器
+    
     # Global model load pretrain best-performance model
     idx2 = torch.tensor(g_vmlist.index[g_vmlist['ens_region_id'] == args.site].tolist() * sensor_num).to(device)
-    # g_engine.model.load_state_dict(torch.load("./model/" + "gwnet_site_CPU_0.22016.pth"))
+    
     g_engine.model.load_state_dict(torch.load("./garage/gwnet/site2global/"
                                               + args.data + '/' + args.site + '/' + args.type + '/' + "best.pth"
-                                              , map_location=device), strict=False) #加载预训练模型的状态字典
+                                              , map_location=device), strict=False) 
     g_engine.model.eval()
-    #使用加载的模型来转换来自数据加载器g_dataloader的数据，并将结果连接到 NumPy 数组
     train_zs = torch.cat(iteronmodel(g_dataloader['train_loader'], dataloader['train_loader'],
                                      idx2, g_engine, device), dim=0).cpu().detach().numpy()
     val_zs = torch.cat(iteronmodel(g_dataloader['val_loader'], dataloader['val_loader'],
                                    idx2, g_engine, device), dim=0).cpu().detach().numpy()
     test_zs = torch.cat(iteronmodel(g_dataloader['test_loader'], dataloader['test_loader'],
                                     idx2, g_engine, device), dim=0).cpu().detach().numpy()
-    #使用转换后的数据数组创建`assit_train_loader`、`assit_val_loader`和`assit_test_loader`。这些加载器用于模型另一部分的训练、验证和测试
 
     assit_train_loader = Dataloader(train_zs, np.zeros_like(train_zs), np.zeros(train_zs.shape[:2]), np.zeros(train_zs.shape[:2]), args.batch_size)
     assit_val_loader = Dataloader(val_zs, np.zeros_like(val_zs), np.zeros(val_zs.shape[:2]), np.zeros(val_zs.shape[:2]), args.batch_size)
@@ -219,8 +213,8 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
             time.sleep(3072 * 2 / 1024 / 1024 / rate)
 
             if args.model == 'Autoformer' or args.model == 'TimesNet':
-                trainx_mark = torch.Tensor(x_mark).to(device, dtype=torch.float)#[64,12,5]
-                trainy_mark = torch.Tensor(y_mark).to(device, dtype=torch.float)#[64,24,5]
+                trainx_mark = torch.Tensor(x_mark).to(device, dtype=torch.float)
+                trainy_mark = torch.Tensor(y_mark).to(device, dtype=torch.float)
                 trainx=trainx[:, :, :, 0]
                 trainy=trainy[:, :, :, 0]
                 dec_inp = torch.zeros([ trainy.shape[0], args.pred_len, trainy.shape[-1]]).float().to(device)#
@@ -257,11 +251,10 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
                 testx_mark = torch.Tensor(x_mark).to(device, dtype=torch.float)
                 testy_mark = torch.Tensor(y_mark).to(device, dtype=torch.float)
                 testx=testx[:, :, :, 0]
-                testy=testy[:, :, :, 0]# __read_data__里多加了一维度,我们要去掉
-                # decoder input
+                testy=testy[:, :, :, 0]
                 dec_inp = torch.zeros([ testy.shape[0], args.pred_len, testy.shape[-1]]).float().to(device)
                 dec_inp = torch.cat([ testy[:,:args.label_len,:], dec_inp], dim=1).float().to(device)
-                metrics = engine.eval(testx, testx_mark, testy, dec_inp, testy_mark, ass_ts)# batch_x, batch_x_mark, dec_inp, batch_y_mark
+                metrics = engine.eval(testx, testx_mark, testy, dec_inp, testy_mark, ass_ts)
             else:
                 testy = testy.transpose(1, 3)
                 testx = testx.transpose(1, 3)
@@ -308,7 +301,7 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
 
     outputs = []
     realy = torch.Tensor(dataloader['y_test']).to(device)
-    realy = realy.transpose(1, 3)[:, 0, :, :]  # [batch_size, num_nodes, pred_len]
+    realy = realy.transpose(1, 3)[:, 0, :, :] 
     for (x, y, x_mark, y_mark), (x1, y1, _, _) in zip(dataloader['test_loader'].get_iterator(),
                                 assit_test_loader.get_iterator()):
         testx = torch.Tensor(x).to(device)
@@ -345,9 +338,9 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
     ar2 = []
     prediction = yhat
     for i in range(args.pred_len):
-        # pred = prediction[:, :, :i+1]
+        
         pred = scaler.inverse_transform(yhat[:, :, :i + 1]) if args.scaler else yhat[:, :, :i + 1]
-        # prediction.append(pred)
+     
         real = realy[:, :, :i + 1]
         metrics = util.metric(pred, real)
         log = 'Evaluate best model on test data for horizon {:d}, Test MAE: {:.4f}, Test SMAPE: {:.4f}, Test MSE: {:.4f}, Test R^2: {:.4f}'
@@ -360,20 +353,17 @@ def main():#局部完整阶段 融合全局时空模型和局部时空模型
     log = 'On average over 12 horizons, Test MAE: {:.4f}, Test SMAPE: {:.4f}, Test MSE: {:.4f}, Test R^2: {:.4f}'
     print(log.format(np.mean(amae), np.mean(amape), np.mean(armse), np.mean(ar2)))
     print(f"There are {sensor_num} VMs in {args.site} of {args.data}")
-    # print(engine.model.state_dict()['final_linear.weight'])
-    # print(engine.model.state_dict()['W'].data)
+   
     torch.save(engine.model.state_dict(), params_path + "/" + args.model + "_exp" + str(args.expid) + "_best_" + str(
         round(his_loss[bestid], 2)) + ".pth")
     prediction_path = params_path + "/" + args.model + "_prediction_results"
     ground_truth = realy.cpu().detach().numpy()
     prediction = prediction.cpu().detach().numpy()
-    # spatial_at = spatial_at.cpu().detach().numpy()
-    # parameter_adj = parameter_adj.cpu().detach().numpy()
+  
     np.savez_compressed(
         os.path.normpath(prediction_path),
         prediction=prediction,
-        # spatial_at=spatial_at,
-        # parameter_adj=parameter_adj,
+       
         ground_truth=ground_truth
     )
 

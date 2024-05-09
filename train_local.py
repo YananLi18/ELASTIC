@@ -52,20 +52,20 @@ torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
 
-def main():#局部时空模型
+def main():# Local spatio-temporal models
     if not args.sever:
         args.root_path = './data/'
     device = torch.device('cuda:' + args.device)
     vmlist = pd.read_csv(args.root_path + args.data + '/' + args.freq + '/' + 'vmlist.csv')
     ins = pd.read_csv(args.root_path + 'e_vm_instance.csv', usecols=['uuid', 'ens_region_id', 'cores'])
     vmr = pd.merge(vmlist, ins, how='left', left_on='vm', right_on='uuid')
-    idx = (vmr['ens_region_id'].values == args.site)#在同一个边缘站点site管理下的本地VM的索引表
+    idx = (vmr['ens_region_id'].values == args.site)
 
     args.num_nodes = sum(idx)
     adj_mx = util.local_adj_(args.root_path, args.data, args.freq, args.adjtype)
     dataloader = util.load_dataset(args.root_path, args.type, args.data, args.batch_size,
                                    args.seq_length, args.pred_len, args.scaler, ratio_flag=False, site=args.site,
-                                   lable_len=args.label_len,model=args.model) # Informer
+                                   lable_len=args.label_len,model=args.model) 
     scaler = dataloader['scaler'] if args.scaler else None
     supports = [torch.tensor(i[idx, :][:, idx]).float().to(device) for i in adj_mx]
 
@@ -130,15 +130,13 @@ def main():#局部时空模型
             trainx = torch.Tensor(x).to(device, dtype=torch.float)
             trainy = torch.Tensor(y).to(device, dtype=torch.float)
             if args.model == 'Informer':
-                trainx_mark = torch.Tensor(x_mark).to(device, dtype=torch.float)#[64,12,5]
-                trainy_mark = torch.Tensor(y_mark).to(device, dtype=torch.float)#[64,24,5]
-                trainx=trainx[:, :, :, 0]# [64,12,66,1]
-                trainy=trainy[:, :, :, 0]# [64,24,66]__read_data__里多加了一维度,我们要去掉
-                # decoder input 【pred_len+labe_len是informer的y的必需品】
-                dec_inp = torch.zeros([ trainy.shape[0], args.pred_len, trainy.shape[-1]]).float().to(device)#[64,12,66]
-                dec_inp = torch.cat([ trainy[:,:args.label_len,:], dec_inp], dim=1).float().to(device)#[64,0:12+12,66] 
-                #[64,12,66,1],[64,12,5],[64,12,66],[64,24,66],[64,12,5]
-                metrics = engine.train(trainx, trainx_mark, trainy, dec_inp, trainy_mark)# batch_x, batch_x_mark, dec_inp, batch_y_mark
+                trainx_mark = torch.Tensor(x_mark).to(device, dtype=torch.float)
+                trainy_mark = torch.Tensor(y_mark).to(device, dtype=torch.float)
+                trainx=trainx[:, :, :, 0]
+                trainy=trainy[:, :, :, 0]
+                dec_inp = torch.zeros([ trainy.shape[0], args.pred_len, trainy.shape[-1]]).float().to(device)
+                dec_inp = torch.cat([ trainy[:,:args.label_len,:], dec_inp], dim=1).float().to(device) 
+                metrics = engine.train(trainx, trainx_mark, trainy, dec_inp, trainy_mark)
             else :
                 trainx = trainx.transpose(1, 3)
                 trainy = trainy.transpose(1, 3)
@@ -165,11 +163,11 @@ def main():#局部时空模型
                 testx_mark = torch.Tensor(x_mark).to(device, dtype=torch.float)
                 testy_mark = torch.Tensor(y_mark).to(device, dtype=torch.float)
                 testx=testx[:, :, :, 0]
-                testy=testy[:, :, :, 0]# __read_data__里多加了一维度,我们要去掉
+                testy=testy[:, :, :, 0]
                 # decoder input
                 dec_inp = torch.zeros([ testy.shape[0], args.pred_len, testy.shape[-1]]).float().to(device)
                 dec_inp = torch.cat([ testy[:,:args.label_len,:], dec_inp], dim=1).float().to(device)
-                metrics = engine.eval(testx, testx_mark, testy, dec_inp, testy_mark)# batch_x, batch_x_mark, dec_inp, batch_y_mark
+                metrics = engine.eval(testx, testx_mark, testy, dec_inp, testy_mark)
             else :
                 testx = testx.transpose(1, 3)
                 testy = testy.transpose(1, 3)
@@ -250,14 +248,11 @@ def main():#局部时空模型
     ar2 = []
     prediction = yhat
     for i in range(args.pred_len):
-        # pred = prediction[:, :, :i+1]
         if args.model == 'Informer' :
             pred = scaler.inverse_transform(yhat[:, :i + 1, :]) if args.scaler else yhat[:, :i + 1, :]
-            # prediction.append(pred)
             real = realy[:, :i + 1, :]
         else:
             pred = scaler.inverse_transform(yhat[:, :, :i + 1]) if args.scaler else yhat[:, :, :i + 1]
-            # prediction.append(pred)
             real = realy[:, :, :i + 1]
         metrics = util.metric(pred, real)
         log = 'Evaluate best model on test data for horizon {:d}, Test MAE: {:.4f}, Test SMAPE: {:.4f}, Test MSE: {:.4f}, Test R^2: {:.4f}'

@@ -20,7 +20,7 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 parser = argparse.ArgumentParser(description='Baseline')
 parser.add_argument('--site', type=str, default='AllSite', help='if valid the CloudOnlymodel in a specific site, pls replace "AllSite"!')
 parser.add_argument('--model', type=str, default='ARIMA',
-                    help='[ARIMA, Holt, Prophet]')
+                    help='[ARIMA]')
 parser.add_argument('--data', type=str, default='All_full', help='data path')
 parser.add_argument('--type', type=str, default='CPU', help='data type')
 parser.add_argument('--freq', type=str, default='15min', help='frequency')
@@ -48,13 +48,9 @@ test_dataloader = DataLoader(testDataset, batch_size=1)
 
 models = [
     ARIMA(),
-    AutoARIMA(), 
-    AutoETS(), 
-    AutoCES(), 
     MSTL(season_length=96),
-    AutoTheta()
 ]
-model_names = ['ARIMA','AutoARIMA','AutoETS','CES','MSTL','AutoTheta']
+model_names = ['ARIMA','MSTL']
 
 def trainmodels(test_dataloader, models, model_names):
     trues = []
@@ -72,7 +68,6 @@ def trainmodels(test_dataloader, models, model_names):
         size = x.element_size() * x.nelement()
         x = x.transpose(1, 3).squeeze().numpy()
         y = y.transpose(1, 3).squeeze().numpy()
-        print("start one epoch")
         cnt = 0
         for row, true in zip(x, y):
             all_same = all(x == row[0] for x in row)
@@ -85,11 +80,10 @@ def trainmodels(test_dataloader, models, model_names):
             s1 = time.time()
             forecast = fcst.forecast(df=df,h=12)
 
-            # time.sleep(size * 2 / 1024 / 1024 / rate)
+            time.sleep(size * 2 / 1024 / 1024 / rate)
             s2 = time.time()
             val_time.append(s2 - s1)
             trues.append(true)
-            # true = np.array(true).reshape(-1)
             true = np.array(true)
             i_true = torch.from_numpy(true)
             for model_name in model_names:
@@ -102,10 +96,9 @@ def trainmodels(test_dataloader, models, model_names):
                 mean_smape[model_name].append(i_smape)
                 mean_mse[model_name].append(i_mse)
                 mean_r2[model_name].append(i_r2)
-        print("finished one epoch")
         
         if i % 10 == 0 and i != 0:
-            print(f"epoch: {i} is processed with time {datetime.now()-start}:")
+            print(f"batch: {i} is processed with time {datetime.now()-start}:")
             for model_name in model_names:
                 mmae = np.mean(mean_mae[model_name])
                 msmape = np.mean(mean_smape[model_name])

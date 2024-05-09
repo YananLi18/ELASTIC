@@ -2,21 +2,7 @@
 The code is built on https://github.com/guokan987/HGCN.
 
 The full datasets of Alibaba ENS is available on https://github.com/xumengwei/EdgeWorkloadsTraces
-# 0. 数据准备
-```shell
-# 按站点区域进行数据选择
-python setselect.py 
-# 时序分解图
-python setanalyze.py --type CPU --paint
-python setanalyze.py --type UP --paint
 
-# 数据清洗
-python setpadding.py --paint
-
-# 邻接矩阵获取
-python adjacency_matrix.py 
-
-```
 # 以vm为粒度，数据集是局部的
 # 1. 仅局部时空预测模型预测
 

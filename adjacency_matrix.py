@@ -36,7 +36,6 @@ def get_location(county):
 
 def get_distance(origin, destination):
     '''
-
     :param origin:
     :param destination: '112.938882,28.228304'
     :return: '290133'
@@ -45,7 +44,7 @@ def get_distance(origin, destination):
     params = {'key': '42d27ad6006ed7210e3f59935689cb5e',
               'origins': origin,
               'destination': destination,
-              'type': '0'}  # 参数4：0：直线距离 1：驾车导航距离仅支持国内坐标
+              'type': '0'}  #  0: straight line distance 1: driving navigation distance only supports domestic coordinates
 
     response = requests.get(url, params=params)
     jd = json.loads(response.content)
@@ -56,10 +55,10 @@ def correct_adj(matrix, threshold):
     deta = matrix.std()
     for i in range(len(matrix)):
         for j in range(len(matrix)):
-            ex = math.exp(-1 * pow(matrix[i, j] / deta, 2)) #ex 的计算基于 (i, j) 处元素的值和标准偏差 deta。模拟数值如何以钟形曲线围绕均值分布，其中 x 代表离均值的距离，表达式给出了该距离处的概率密度。
-            if matrix[i, j] <= threshold and ex >= 0.1:     #如果元素小于或等于阈值，且 ex 大于或等于 0.1，则更新为 ex
+            ex = math.exp(-1 * pow(matrix[i, j] / deta, 2)) 
+            if matrix[i, j] <= threshold and ex >= 0.1:     
                 matrix[i, j] = ex
-            else:                                           #
+            else:                                           
                 matrix[i, j] = 0
     return matrix
 
@@ -112,7 +111,7 @@ def global_adj(path):
         for j in range(i+1, len(site_lst)):
             origin = frame[site_lst[i]].to_list()
             dest = frame[site_lst[j]].to_list()
-            A_tem[i, j] = dtw(origin, dest)  # 越大差异越大，越小越相似
+            A_tem[i, j] = dtw(origin, dest)  
     B_tem = correct_adj(A_tem + A_tem.T, thres)
     np.save(path+'remain/tem_adj_'+str(temp_threshold) +
                 '.npy', B_tem)
@@ -139,7 +138,7 @@ def global_adj(path):
 def global_adj_():
     lst = []
     for i in ['dis', 'tem', 'rtt']:
-        adj = np.load('/data2/lyn/www23/data/site/15min/' + i + '_adj.npy')
+        adj = np.load('./data/site/15min/' + i + '_adj.npy')
         lst.append(adj)
     return lst
 
@@ -147,9 +146,9 @@ def global_adj_():
 
 ############################################################
 def phy_adj(site, freq):
-    root_path = '/data2/lyn/www23/data/' + site + '/' + freq + '/'
+    root_path = './data/' + site + '/' + freq + '/'
     df = pd.read_csv(root_path + "vmlist.csv")
-    ins = pd.read_csv('/data/ali_ENS/e_vm_instance.csv', usecols=['uuid', 'cores', 'memory', 'storage'])
+    ins = pd.read_csv('./data/e_vm_instance.csv', usecols=['uuid', 'cores', 'memory', 'storage'])
     df1 = pd.merge(df, ins, left_on='vm', right_on='uuid', how='left')
     df1.drop(['vm', 'uuid'], axis=1, inplace=True)
     df1['memory'] = df1['memory'] / 1024
@@ -161,9 +160,9 @@ def phy_adj(site, freq):
 
 
 def log_adj(site, freq):
-    root_path = '/data2/lyn/www23/data/' + site + '/' + freq + '/'
+    root_path = './data/' + site + '/' + freq + '/'
     df = pd.read_csv(root_path + "vmlist.csv")
-    ins = pd.read_csv('/data/ali_ENS/e_vm_instance.csv', usecols=['uuid', 'ali_uid', 'nc_name',
+    ins = pd.read_csv('./data/e_vm_instance.csv', usecols=['uuid', 'ali_uid', 'nc_name',
                                                                   'ens_region_id', 'image_id'])
     df1 = pd.merge(df, ins, left_on='vm', right_on='uuid', how='left')
     df1.drop(['vm', 'uuid'], axis=1, inplace=True)
@@ -177,8 +176,6 @@ def local_adj(site, freq):
     return phy_adj(site, freq) + log_adj(site, freq)
 
 
-# /data2/lyn/www23/data/site/15min/
-# '/data/zph/HGCN/data/site/15min/'
-path = 'D:/keyan/2023lyn/HGCN/data/site/15min/'
+path = './data/site/15min/'
 
 global_adj(path)

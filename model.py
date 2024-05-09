@@ -28,10 +28,6 @@ from utils import T_cheby_conv_ds_1
 from utils import dynamic_adj
 from utils import SATT_h_gcn
 from sparse_activations import Sparsemax
-"""
-the parameters:
-x-> [batch_num,in_channels,num_nodes,tem_size],
-"""
 # gloabl and whole 
 from utils import mgcn_depoly, mgcn_poly, Swish, Mish
 # Informer
@@ -60,9 +56,9 @@ class ASTGCN_Recent(nn.Module):
         self.block1=ST_BLOCK_0(device, in_dim,dilation_channels,num_nodes,length,K,Kt)
         self.block2=ST_BLOCK_0(device, dilation_channels,dilation_channels,num_nodes,length,K,Kt)
         self.final_conv=Conv2d(length,out_dim,kernel_size=(1, dilation_channels),padding=(0,0),
-                          stride=(1,1), bias=True)#输出通道12个，=out_dim
+                          stride=(1,1), bias=True)
         self.supports=supports
-        self.bn=BatchNorm2d(in_dim,affine=False)#对批进行特征归一化
+        self.bn=BatchNorm2d(in_dim,affine=False)
         
     def forward(self,input):
         x=self.bn(input)
@@ -75,8 +71,8 @@ class ASTGCN_Recent(nn.Module):
         adj=A 
         x,_,_ = self.block1(x,adj)
         x,d_adj,t_adj = self.block2(x,adj)
-        x = x.permute(0,3,2,1)                  #重新排列维度顺序
-        x = self.final_conv(x)#b,12,n,1
+        x = x.permute(0,3,2,1)                  
+        x = self.final_conv(x)#b,l,n,1
         return x,d_adj,t_adj
 
     
@@ -99,16 +95,16 @@ class DGCN_recent(nn.Module):
     def forward(self,input):
         x=input
     
-        A=self.h+self.supports[0]               #通过添加可学习参数h来修改邻接矩阵A
-        d=1/(torch.sum(A,-1)+0.0001)            #A 的每一行之和的倒数，并加上一个小ε以保证数值的稳定性。
-        D=torch.diag_embed(d)                   #创建对角矩阵 D，其中对角元素是来自向量 d 的值
-        A=torch.matmul(D,A)                     #将邻接矩阵 A 与 D 相乘，对其进行归一化处理。此操作将使 A 成为行归一化邻接矩阵。
-        A1=F.dropout(A,0.5,self.training)       #以0.5的概率对归一化邻接矩阵 A 进行dropout。是一种正则化技术，在训练过程中随机将一部分值设为零，以防止过度拟合。
+        A=self.h+self.supports[0]               # Modify the adjacency matrix A by adding a learnable parameter h
+        d=1/(torch.sum(A,-1)+0.0001)            # The reciprocal of the sum of each row of A, with a small ε added for numerical stability.
+        D=torch.diag_embed(d)                   # Create a diagonal matrix D where the diagonal elements are values from the vector d
+        A=torch.matmul(D,A)                     # Multiply the adjacency matrix A with D to normalize it. This operation will make A a row normalized adjacency matrix.
+        A1=F.dropout(A,0.5,self.training)       # Dropout with probability 0.5 on the normalized adjacency matrix A. It is a regularization technique in which a fraction of the values are randomly set to zero during training to prevent overfitting.
               
         x,_,_=self.block1(x,A1)
         x,d_adj,t_adj=self.block2(x,A1)
     
-        x=self.conv1(x).permute(0,3,2,1).contiguous()#b,c,n,l 使其具有形状（batch_size、channel、num_nodes、sequence_length）。
+        x=self.conv1(x).permute(0,3,2,1).contiguous()#b,c,n,l 
         return x,d_adj,A
 
 
@@ -130,14 +126,14 @@ class LSTM(nn.Module):
     def forward(self,input):
         x=input
         shape = x.shape
-        h = Variable(torch.zeros((1,shape[0]*shape[2],self.c_out))).to(self.device)#hide LSTM 隐藏状态和单元状态的初始化
+        h = Variable(torch.zeros((1,shape[0]*shape[2],self.c_out))).to(self.device)#hide LSTM
         c = Variable(torch.zeros((1,shape[0]*shape[2],self.c_out))).to(self.device)#cell
         hidden=(h,c)
         
-        x=x.permute(0,2,3,1).contiguous().view(shape[0]*shape[2],shape[3],shape[1])  #它被重塑为三维张量，其中第一维度结合了批次大小和空间维度
-        x,hidden=self.lstm(x,hidden)                                                 #重塑后的x与初始隐藏状态和单元状态一起通过LSTM层。LSTM层计算输入序列上的LSTM变换
-        x=x.view(shape[0],shape[2],shape[3],self.c_out).permute(0,3,1,2).contiguous()#重塑输出张量，使其与原始空间维度和批量大小相匹配。
-        x=self.conv1(x)#b,c,n,l                                                      #重排维序为（batch_size,c_out, n, l）。
+        x=x.permute(0,2,3,1).contiguous().view(shape[0]*shape[2],shape[3],shape[1])  
+        x,hidden=self.lstm(x,hidden)                                                 
+        x=x.view(shape[0],shape[2],shape[3],self.c_out).permute(0,3,1,2).contiguous()
+        x=self.conv1(x)#b,c,n,l                                                      
         return x,hidden[0],hidden[0]
 
 
@@ -158,12 +154,12 @@ class GRU(nn.Module): # Gated Recurrent Unit (GRU) model
     def forward(self,input):
         x=input
         shape = x.shape
-        h =Variable(torch.zeros((1,shape[0]*shape[2],self.c_out))).to(self.device)   #初始化 GRU 隐藏状态
+        h =Variable(torch.zeros((1,shape[0]*shape[2],self.c_out))).to(self.device)   
         hidden=h
         
-        x=x.permute(0,2,3,1).contiguous().view(shape[0]*shape[2],shape[3],shape[1])  #重塑输入张量，第一维度结合了批次大小和空间维度
-        x,hidden=self.gru(x,hidden)                                                  #GRU 层计算输入序列上的 GRU 变换
-        x=x.view(shape[0],shape[2],shape[3],self.c_out).permute(0,3,1,2).contiguous()#重塑 GRU 输出和应用卷积层
+        x=x.permute(0,2,3,1).contiguous().view(shape[0]*shape[2],shape[3],shape[1])  
+        x,hidden=self.gru(x,hidden)                                                  
+        x=x.view(shape[0],shape[2],shape[3],self.c_out).permute(0,3,1,2).contiguous()
         x=self.conv1(x)#b,c,n,l
         return x,hidden[0],hidden[0]
 
@@ -185,14 +181,13 @@ class Gated_STGCN(nn.Module):
         self.bn=BatchNorm2d(in_dim,affine=False)
     def forward(self,input):
         x=self.bn(input)
-        # adj=self.supports[0]
 
         A=self.supports[0]
         d=1/(torch.sum(A,-1)+0.0001)
         D=torch.diag_embed(d)
         A=torch.matmul(D,A)
 
-        adj=A  # F.dropout(A,0.5)
+        adj=A  
         x=self.block1(x,adj)
         x=self.block2(x,adj)
         x=self.block3(x,adj)
@@ -218,7 +213,7 @@ class GRCN(nn.Module):
 
     def forward(self,input):
         x=self.bn(input)
-        # adj=self.supports[0]
+       
 
         A=self.supports[0]
         d=1/(torch.sum(A,-1)+0.0001)
@@ -251,13 +246,11 @@ class OGCRNN(nn.Module):   #Operator Gated Convolutional Recurrent Neural Networ
 
     def forward(self,input):
         x=self.bn(input)
-        mask=(self.supports[0]!=0).float() #从self.supports[0]中存储的邻接矩阵创建一个二进制掩码。掩码用于将邻接矩阵的特定元素清零
+        mask=(self.supports[0]!=0).float() 
         A=self.h*mask     
-        #A=self.h+self.supports[0]
         d=1/(torch.sum(A,-1)+0.0001)
         D=torch.diag_embed(d)
         A=torch.matmul(D,A)
-        # A=F.dropout(A,0.5)
         x=self.block1(x,A)
         
         x=self.conv1(x)
@@ -285,15 +278,14 @@ class OTSGGCN(nn.Module): #Operator Temporal Shift Graph Convolutional Network �
 
     def forward(self,input):
         x=input#self.bn(input)
-        mask=(self.supports[0]!=0).float() #从self.supports[0]中存储的邻接矩阵创建一个二进制掩码。掩码用于将邻接矩阵的特定元素清零
-        A=self.h*mask                       #可学习参数h与二进制掩码掩码逐元素相乘。该操作通过将h的值分配给掩码的非零元素来修改邻接矩阵A，0元素掩码为0，使得器对应的hide值也为0
-        # A = self.h * self.supports[0]
+        mask=(self.supports[0]!=0).float() 
+        A=self.h*mask                      
+        
         d=1/(torch.sum(A,-1)+0.0001)
         D=torch.diag_embed(d)
         A=torch.matmul(D,A)
-        A1=torch.eye(self.num_nodes).cuda(str(self.device))-A   #change
-        # A1=F.dropout(A1,0.5)
-        # A1 = F.dropout(A,0.5)
+        A1=torch.eye(self.num_nodes).cuda(str(self.device))-A   
+        
         x=self.block1(x,A1)
         x=self.block2(x,A1)
         x=self.block3(x,A1)
@@ -313,8 +305,8 @@ class gwnet(nn.Module):
         self.gat = gat
         self.addaptadj = addaptadj
 
-        self.filter_convs = nn.ModuleList() #用于定义模型的层，把层的列表储存为属性
-        self.gate_convs = nn.ModuleList()   #每一个层都可以append若干预定义的简单层，形成自己需要的层
+        self.filter_convs = nn.ModuleList() 
+        self.gate_convs = nn.ModuleList()  
         self.residual_convs = nn.ModuleList()
         self.skip_convs = nn.ModuleList()
         self.bn = nn.ModuleList()
@@ -332,26 +324,26 @@ class gwnet(nn.Module):
         
         if supports is None:
             self.supports = []
-        if self.addaptadj:#创建一个维度为（num_node，10）的随机张量，其中num_node是图中的节点数。10表示任意的特征尺寸或嵌入尺寸.to将张量放置在指定的设备（例如CPU或GPU）上。
-            self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)#requires_grad=True表示在反向过程中为这些参数计算梯度
-            self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)#用作图中节点的可学习嵌入或表示。模型学习它们，以捕捉与手头任务相关的节点的重要特征或特性
+        if self.addaptadj:
+            self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)
+            self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)
             self.supports_len += 1
 
         self.remain_len = length + 1
         kernel_size = (length // 12) +1
         for b in range(blocks):
             additional_scope = kernel_size - 1
-            new_dilation = 1#卷积的扩张因子
+            new_dilation = 1
             for i in range(layers):
-                # dilated convolutions    扩展卷积层
+                # dilated convolutions    
                 self.filter_convs.append(nn.Conv2d(in_channels=residual_channels,
                                                    out_channels=dilation_channels,
-                                                   kernel_size=(1, kernel_size),dilation=new_dilation))#使用“append”方法将卷积层或其他模块附加到层中
+                                                   kernel_size=(1, kernel_size),dilation=new_dilation))
 
                 self.gate_convs.append(nn.Conv1d(in_channels=residual_channels,
                                                  out_channels=dilation_channels,
                                                  kernel_size=(1, kernel_size), dilation=new_dilation))
-                #残差和跳跃连接的1x1卷积层
+               
                 # 1x1 convolution for residual connection
                 self.residual_convs.append(nn.Conv1d(in_channels=dilation_channels,
                                                      out_channels=residual_channels,
@@ -362,12 +354,12 @@ class gwnet(nn.Module):
                                                  out_channels=skip_channels,
                                                  kernel_size=(1, 1)))
                 self.bn.append(nn.BatchNorm2d(residual_channels))#批处理规范化层
-                if self.gat:#这些模块之间的选择取决于使用的是门控图神经网络（gat）还是图卷积网络（gcn）。
+                if self.gat:
                     self.remain_len = self.remain_len - new_dilation * (kernel_size - 1)
                     self.gconv.append(multi_gat(dilation_channels, self.remain_len,
                                                 dropout, support_len=self.supports_len))
-                new_dilation *= 2 #膨胀因子，在第一次迭代中，网络用一个小的感受野捕捉细粒度的细节。在随后的迭代中，它以越来越大的规模捕捉特征，构建特征层次。
-                receptive_field += additional_scope #感受野
+                new_dilation *= 2 
+                receptive_field += additional_scope 
                 additional_scope *= 2
                 if not self.gat:
                     self.gconv.append(multi_gcn(dilation_channels, residual_channels,
@@ -382,29 +374,29 @@ class gwnet(nn.Module):
                                     bias=True)
 
         self.receptive_field = receptive_field
-        # self.bn_1 = BatchNorm2d(in_dim, affine=False)
+        
 
     def forward(self, input):
         # input = self.bn_1(input)
-        in_len = input.size(3)                                                  #沿时间维度（第四维度）的长度检查输入的长度
-        if in_len < self.receptive_field:                                       #如果输入长度小于期望的感受野，则对输入数据应用填充以使其长度等于感受野
-            x = nn.functional.pad(input, (self.receptive_field-in_len, 0, 0, 0))#填充仅添加到时间维度的左侧
+        in_len = input.size(3)                                                  
+        if in_len < self.receptive_field:                                       
+            x = nn.functional.pad(input, (self.receptive_field-in_len, 0, 0, 0))
         else:
             x = input
-        x = self.start_conv(x)                                                  #填充输入x通过卷积层start_conv”。该层可能用作初始特征提取器。
+        x = self.start_conv(x)                                                  
         skip = 0
 
         # calculate the current adaptive adj matrix once per iteration
         new_supports = None
-        if self.supports is not None:                                           #该代码检查是否存在要在模型中使用的预定义邻接矩阵
-            if self.addaptadj:                                                  #基于所学习的参数来选择性地调整它们
-                adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)#使用学习的参数self.nodevec来。
-                new_supports = self.supports + [adp]                                  #计算自适应邻接矩阵adp，该矩阵可以表示图中节点之间的关系
+        if self.supports is not None:                                           
+            if self.addaptadj:                                                  
+                adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)
+                new_supports = self.supports + [adp]                                  
             else:
                 new_supports = self.supports
 
         # WaveNet layers
-        for i in range(self.blocks * self.layers):#因为有跳过一些层参与后面层的计算，所以该操作称为残差residual、跳过skip
+        for i in range(self.blocks * self.layers):
 
             #            |----------------------------------------|     *residual*
             #            |                                        |
@@ -417,35 +409,33 @@ class gwnet(nn.Module):
 
             #(dilation, init_dilation) = self.dilations[i]
             #residual = dilation_func(x, dilation, init_dilation, i)
-            residual = x                                                #根据输入计算残差连接，输入通常被称为“恒等式”或“残差
+            residual = x                                                
             # dilated convolution
-            filter = self.filter_convs[i](residual)                     #使用滤波器和门应用扩展卷积运算。此步骤是WaveNet的特征，并捕获时间相关性。
-            filter = torch.tanh(filter)                                 #滤波器卷积计算一组特征，这些特征可以被解释为输入数据中不同模式或特征的激活。
+            filter = self.filter_convs[i](residual)                    
+            filter = torch.tanh(filter)                                 
             gate = self.gate_convs[i](residual)
-            gate = torch.sigmoid(gate)                                  #门卷积计算一组介于0和1之间的值，这些值为门控信号。这些信号控制滤波特征的哪些部分被允许通过。
+            gate = torch.sigmoid(gate)                                  
             x = filter * gate
 
             # parametrized skip connection
 
             s = x
-            s = self.skip_convs[i](s)                                   #使用卷积层对跳过连接（“s”）进行参数化
+            s = self.skip_convs[i](s)                                   
             try:
                 skip = skip[:, :, :,  -s.size(3):]
             except:
                 skip = 0
-            skip = s + skip                                             #将跳过连接与来自前一层的累积跳过信息（“跳过”）组合在一起
+            skip = s + skip                                            
 
-            x = self.gconv[i](x, new_supports)                          #将图卷积（`self.gconv[i]`）应用于扩展卷积输出
+            x = self.gconv[i](x, new_supports)                          
 
-            x = x + residual[:, :, :, -x.size(3):]                      #将剩余连接添加回输出
+            x = x + residual[:, :, :, -x.size(3):]                      
+            x = self.bn[i](x)                                          
 
-            x = self.bn[i](x)                                           #对输出应用批处理规范化self.bn[i]。
-
-        x = F.relu(skip)                                                #累积跳过信息（“跳过”）通过ReLU激活函数
+        x = F.relu(skip)                                                
         x = F.relu(self.end_conv_1(x))
-        x = self.end_conv_2(x)                                          #结果通过两个卷积层end_conv_1和end_conv2以生成最终输出。
+        x = self.end_conv_2(x)                                          
         return x
-        # return x, adp, adp
 
 
 class H_GCN_wh(nn.Module):
@@ -469,8 +459,8 @@ class H_GCN_wh(nn.Module):
         
         if supports is None:
             self.supports = []
-        self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)#将nodevec初始化为可学习参数。这些参数通常用随机值初始化
-        self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)#并在训练期间通过反向传播进行更新。
+        self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)
+        self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)
         self.h=Parameter(torch.zeros(num_nodes,num_nodes), requires_grad=True)
         nn.init.uniform_(self.h, a=0, b=0.0001)
         
@@ -500,34 +490,33 @@ class H_GCN_wh(nn.Module):
         self.bn=BatchNorm2d(in_dim,affine=False)
         
 
-    def forward(self, input):   #用于计算反映图结构的邻接矩阵“A”。然后在随后的图卷积运算中使用该邻接矩阵，使网络能够将图信息纳入其计算中，并适应输入数据的特定图结构。
-        x=self.bn(input)            #批处理规范化
+    def forward(self, input):   
+        x=self.bn(input)            
         shape=x.shape
         
         if self.supports is not None:
             #nodes
             #A=A+self.supports[0]
-            A=F.relu(torch.mm(self.nodevec1, self.nodevec2))        #用nodevec于计算邻接矩阵A，将这些矩阵相乘后维度为num_node*num_node。
+            A=F.relu(torch.mm(self.nodevec1, self.nodevec2))        
             d=1/(torch.sum(A,-1))
             D=torch.diag_embed(d)
-            A=torch.matmul(D,A)                 #A表示图结构
+            A=torch.matmul(D,A)                 
             
-            new_supports = self.supports + [A]                      #计算出的邻接矩阵A用于更新图结构。它被添加到new_supports列表中，该列表稍后用于图卷积运算。
-            
+            new_supports = self.supports + [A]                      
             
         skip=0
         x = self.start_conv(x)
         
-        #1                                      #基于中间输出x计算跳跃连接s1 s2，跳跃连接通过相加而累积在skip中。
-        x=self.block1(x,new_supports)           #block1、2是图卷积操作，会修改邻接矩阵A，来更新的图结构。
+        #1                                      
+        x=self.block1(x,new_supports)           
         
         s1=self.skip_conv1(x)
         skip=s1+skip
         
         #2
-        x=self.block2(x,new_supports)           #nodevec的值会学习图结构中有意义的关系和模式，
-                                                #学习到的参数允许神经网络根据输入图的特定特征调整其图卷积运算
-        s2=self.skip_conv2(x)                   #从而潜在地提高网络从数据中提取有意义特征
+        x=self.block2(x,new_supports)           
+                                                
+        s2=self.skip_conv2(x)                   
         skip = skip[:, :, :,  -s2.size(3):]
         skip = s2 + skip
                 
@@ -538,7 +527,7 @@ class H_GCN_wh(nn.Module):
         return x,x,A
 
 
-class H_GCN_wdf(nn.Module):#GCN的模型的变体，增加了处理节点和集群级别信息的复杂性。可学习的参数和支持矩阵允许模型在训练期间适应特定的图结构。
+class H_GCN_wdf(nn.Module):
     def __init__(self,device, num_nodes, cluster_nodes,dropout=0.3, supports=None,supports_cluster=None,transmit=None,length=12, 
                  in_dim=1,in_dim_cluster=3,out_dim=12,residual_channels=32,dilation_channels=32,
                  skip_channels=256,end_channels=512,kernel_size=2,K=3,Kt=3):
@@ -577,7 +566,7 @@ class H_GCN_wdf(nn.Module):#GCN的模型的变体，增加了处理节点和集�
         self.nodevec1_c = nn.Parameter(torch.randn(cluster_nodes, 10).to(device), requires_grad=True).to(device)
         self.nodevec2_c = nn.Parameter(torch.randn(10,cluster_nodes).to(device), requires_grad=True).to(device)  
         
-        #图卷积块block 执行图卷积和池化操作。它们获取输入特征，应用图卷积，并产生输出特征。这些块被顺序地应用以捕获分层信息。
+       
         self.block1=GCNPool(2*dilation_channels,dilation_channels,num_nodes,length-6,3,dropout,num_nodes,
                             self.supports_len)
         self.block2=GCNPool(2*dilation_channels,dilation_channels,num_nodes,length-9,2,dropout,num_nodes,
@@ -587,13 +576,12 @@ class H_GCN_wdf(nn.Module):#GCN的模型的变体，增加了处理节点和集�
                             self.supports_len)
         self.block_cluster2=GCNPool(dilation_channels,dilation_channels,cluster_nodes,length-9,2,dropout,cluster_nodes,
                             self.supports_len)
-        #跳过连接在模型中用于保留以前层的信息。
+       
         self.skip_conv1=Conv2d(2*dilation_channels,skip_channels,kernel_size=(1,1),
                           stride=(1,1), bias=True)
         self.skip_conv2=Conv2d(2*dilation_channels,skip_channels,kernel_size=(1,1),
                           stride=(1,1), bias=True)
         
-        #这些层将通道尺寸减小到所需的输出尺寸。
         self.end_conv_1 = nn.Conv2d(in_channels=skip_channels,
                                   out_channels=end_channels,
                                   kernel_size=(1,3),
@@ -790,7 +778,7 @@ class H_GCN(nn.Module):
         x = self.start_conv(x)
         x_cluster = self.start_conv_cluster(x_cluster)
         transmit1 = self.transmit1(x,x_cluster)
-        x_1=(torch.einsum('bmn,bcnl->bcml',transmit1,x_cluster))        #计算两个张量的收缩，从bmn和bcnl乘积收缩到bcml
+        x_1=(torch.einsum('bmn,bcnl->bcml',transmit1,x_cluster))        
         x=self.gate1(x,x_1)
         skip=0
         skip_c=0
@@ -805,12 +793,12 @@ class H_GCN(nn.Module):
         #2       
         x_cluster=self.block_cluster2(x_cluster,new_supports_cluster)
         x=self.block2(x,new_supports) 
-        transmit3 = self.transmit3(x,x_cluster)                         #线性变换合并x与xcluster，计算cluster对local的影响
+        transmit3 = self.transmit3(x,x_cluster)                         
         x_3=(torch.einsum('bmn,bcnl->bcml',transmit3,x_cluster))
         x=self.gate3(x,x_3)
 
-        s2=self.skip_conv2(x)      #由于卷积步长或核大小，这种卷积操作可能会改变张量“s2”的空间维度，特别是其宽度（最后一个维度
-        skip = skip[:, :, :,  -s2.size(3):] #“skip’张量进行切片，只保留“skip”张量的最后一部分，使其具有与“s2”相同的宽度。
+        s2=self.skip_conv2(x)      
+        skip = skip[:, :, :,  -s2.size(3):] 
         skip = s2 + skip
         
         #output
@@ -821,7 +809,7 @@ class H_GCN(nn.Module):
 
 
 #train_whole
-class gwnet_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于train_whole.py中trainer_global()。
+class gwnet_gl(nn.Module):#Used in trainer_global() of train_whole.py.
     def __init__(self, device, num_nodes, site_num, rep_index, dropout=0.3, supports=None,l_supports=None, length=12, in_dim=1,
                  out_dim=12, residual_channels=32, dilation_channels=32, skip_channels=256, end_channels=512,
                  kernel_size=2, blocks=4, layers=2, gat=False, addaptadj=True, contrastive = 'RNC'):
@@ -880,7 +868,7 @@ class gwnet_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于trai
             self.supports_len += 1
 
         self.remain_len = length + 1
-        kernel_size = (length // 12) + 1#blocks=4, layers=2,总共迭代缩小12*(kernel_size-1),最后想变成1,，就需要这个公式
+        kernel_size = (length // 12) + 1        # blocks=4, layers=2,total iterations shrink 12*(kernel_size-1),finally want to become 1, need this equation
 
         for b in range(blocks):
             additional_scope = kernel_size - 1
@@ -928,14 +916,10 @@ class gwnet_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于trai
         # self.bn_1 = BatchNorm2d(in_dim, affine=False)
     def contrastive_learning(self, features, labels):
         """
-        Compute the per-sample Rank-N-Contrast (RNC) loss.
-
         :param features: Tensor of shape (batch_size, 1, features, len), representing the feature embeddings.
         :param labels: Tensor of shape (batch_size, 1, 1, len), representing the target labels.
-        :param tau: Temperature parameter.
-        :return: The per-sample RNC loss.
         """
-        features = torch.cat([features[:, :, :self.idx, :], features[:, :, self.idx + 1:, :]], dim=2)# 去掉lable
+        features = torch.cat([features[:, :, :self.idx, :], features[:, :, self.idx + 1:, :]], dim=2)
         batch , _, sitenum, len = features.size()
         features = features.squeeze(1).reshape(-1, sitenum)
         labels = labels.squeeze(1).reshape(-1, 1)
@@ -950,7 +934,7 @@ class gwnet_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于trai
         elif self.contrastive == 'Margin-Triplet':
              loss = Margin_Triplet_loss(features, labels)
         else :
-            print("not get a contrastive loss function!")
+            print("Not get a contrastive loss function!")
         return loss
     def forward(self, input, input_site, output_site):
         # input_site in [batch, 1, site_num, seq_len]
@@ -984,13 +968,6 @@ class gwnet_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于trai
         # calculate the current adaptive adj matrix once per iteration
         new_supports = None
         if self.supports is not None:
-            # for i in range(len(self.supports)):
-            #     A=self.supports[i]
-            #     d=1/(torch.sum(A,-1)+0.0001)
-            #     D=torch.diag_embed(d)
-            #     A=torch.matmul(D,A)
-            #     # A1=torch.eye(self.num_nodes).cuda(str(self.device))-A
-            #     self.supports[i] = A
             if self.addaptadj:
                 adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)
                 new_supports = self.supports + [adp]
@@ -1044,7 +1021,7 @@ class gwnet_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于trai
         return x, contrastive_loss, output_re
         # return x, adp, adp
 
-class OTSGGCN_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于train_whole.py中trainer_global()。
+class OTSGGCN_gl(nn.Module):
     def __init__(self, device, num_nodes, site_num, rep_index, dropout=0.3, supports=None,l_supports=None, length=12, in_dim=1,
                  out_dim=12, residual_channels=32, dilation_channels=32, skip_channels=256, end_channels=512,
                  K=3,Kt=3):
@@ -1066,8 +1043,7 @@ class OTSGGCN_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于tr
         self.l_supports=l_supports
         self.gcn = mgcn_poly(site_num,1,len(l_supports))
 
-        ####
-        #tem_size=self.patch_len# changed for patch
+        
         tem_size=length
         self.num_nodes=num_nodes
         self.block1=ST_BLOCK_6(device,in_dim,dilation_channels,num_nodes,tem_size,K,Kt)
@@ -1099,27 +1075,20 @@ class OTSGGCN_gl(nn.Module):#相比gwnet增加了头尾两个卷积层 #用于tr
         ####
         ## add
         x=input#self.bn(input)
-        mask=(self.supports[0]!=0).float() #从self.supports[0]中存储的邻接矩阵创建一个二进制掩码。掩码用于将邻接矩阵的特定元素清零
-        A=self.h*mask                       #可学习参数h与二进制掩码掩码逐元素相乘。该操作通过将h的值分配给掩码的非零元素来修改邻接矩阵A，0元素掩码为0，使得器对应的hide值也为0
-        # A = self.h * self.supports[0]
+        mask=(self.supports[0]!=0).float() 
+        A=self.h*mask                    
         d=1/(torch.sum(A,-1)+0.0001)
         D=torch.diag_embed(d)
         A=torch.matmul(D,A)
-        A1=torch.eye(self.num_nodes).cuda(str(self.device))-A   #change
+        A1=torch.eye(self.num_nodes).cuda(str(self.device))-A   
         A1=F.dropout(A1,0.5)
-        # A1 = F.dropout(A,0.5)
         x=self.block1(x,A1)
         x=self.block2(x,A1)
         x=self.block3(x,A1)
         x=self.conv1(x)#b,12,n,1
-        ####
-        
-        # add
-        # x = self.unpatch(x)
+       
 
         xs = self.final_conv(torch.unsqueeze(x[:, :, self.idx, :], dim=1)).transpose(1, 2)
-        #xs = self.final_depthwise(torch.unsqueeze(x[:, :, self.idx, :], dim=1))
-        #xs = self.final_pointwise(xs).transpose(1, 2)
         return x, xs, output_re
     
 
@@ -1138,14 +1107,14 @@ class gwnet_plus(nn.Module):
         self.num_nodes = num_nodes
         self.disagg_type = disagg_type
        
-        # 相比gwnet加了first_conv，W，final_conv1/2三个部件
+        # pp
         self.first_conv = nn.ConvTranspose2d(in_channels=1, out_channels=num_nodes, kernel_size=(1, 1))
         self.W = nn.Parameter(torch.tensor([1, 0, 0], dtype=torch.float))
         self.gate1 = nn.Linear(num_nodes, 3)
         self.gate2 = nn.Linear(num_nodes, 3)
         self.swish = Swish()
         self.mish = Mish()
-        ## plus plus
+      
         self.inv_gcn = mgcn_depoly(1,num_nodes,len(supports))
 
         self.final_conv1 = nn.Conv2d(in_channels=out_dim, out_channels=out_dim, kernel_size=(1, 1))
@@ -1177,8 +1146,7 @@ class gwnet_plus(nn.Module):
 
         self.remain_len = length + 1
         kernel_size = (length // 12) +1
-        # self.remain_len = self.patch_len + 1 
-        # kernel_size = (self.patch_len // 12) + 1  # 缩小kernel_size-1、2*kernel_size-2的blocks次
+      
         for b in range(blocks):
             additional_scope = kernel_size - 1
             new_dilation = 1
@@ -1222,13 +1190,13 @@ class gwnet_plus(nn.Module):
                                     bias=True)
 
         self.receptive_field = receptive_field
-        # self.bn_1 = BatchNorm2d(in_dim, affine=False)
+       
 
     def forward(self, input, assist_ten):
         # assist_ten[b,pre_len,sitenum,1]
         # input [b,1,sitenum,pre_len]
         # y = self.first_conv(assist_ten[:, :, 0, :].unsqueeze(1)).transpose(1, 2)
-        y = assist_ten[:, :, 0, :].unsqueeze(1) # 压缩站点维度再扩到第2维度 [b,1，len,1] 
+        y = assist_ten[:, :, 0, :].unsqueeze(1) 
         y = self.inv_gcn(y.transpose(2, 3)).transpose(1, 2).transpose(1,3)
         
         
@@ -1238,12 +1206,10 @@ class gwnet_plus(nn.Module):
             x = nn.functional.pad(input, (self.receptive_field - in_len, 0, 0, 0))
         else:
             x = input
-        ## plus plus
+        # pp
         x = self.start_conv(x)
         skip = 0
-        # normalizaion adj_mx
         
-        # calculate the current adaptive adj matrix once per iteration
         new_supports = None
         if self.supports is not None:
             for i in range(len(self.supports)):
@@ -1251,7 +1217,6 @@ class gwnet_plus(nn.Module):
                 d=1/(torch.sum(A,-1)+0.0001)
                 D=torch.diag_embed(d)
                 A=torch.matmul(D,A)
-                # A1=torch.eye(self.num_nodes).cuda(str(self.device))-A
                 self.supports[i] = A
             if self.addaptadj:
                 adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)
@@ -1295,19 +1260,16 @@ class gwnet_plus(nn.Module):
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
 
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
+           
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # [batch * len, 3]
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # [batch, len, 3]
 
-            # 使用门控信号控制每部分的贡献
+            # w
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
             output = part1 + part2 + part3
         return output
 
@@ -1320,12 +1282,11 @@ class LSTM_plus(nn.Module):# LSTM in L89
         super(LSTM_plus, self).__init__()
         self.lstm = nn.LSTM(in_dim, dilation_channels, batch_first=True)  # b*n,l,c
         self.c_out = dilation_channels
-        tem_size = length # should equal to x.dim3 in forward
+        tem_size = length 
         self.tem_size = tem_size
 
         self.conv1 = Conv2d(dilation_channels, out_dim, kernel_size=(1, tem_size), padding=(0, 0),
                             stride=(1, 1), bias=True)
-        # Our module 增加了头部的一次卷积层和一个可学习的参数W
         self.first_conv = nn.ConvTranspose2d(in_channels=1, out_channels=num_nodes, kernel_size=(1, 1))
         self.inv_gcn = mgcn_depoly(1,num_nodes,len(supports))
         self.W = nn.Parameter(torch.tensor([1, 0, 0], dtype=torch.float))
@@ -1337,7 +1298,7 @@ class LSTM_plus(nn.Module):# LSTM in L89
         self.device = device
     def forward(self, input, assist_ten):
         # y = self.first_conv(assist_ten[:, :, 0, :].unsqueeze(1)).transpose(1, 2)
-        y = assist_ten[:, :, 0, :].unsqueeze(1) # 压缩站点维度再扩到第2维度 [b,1，len,1] 
+        y = assist_ten[:, :, 0, :].unsqueeze(1) 
         y = self.inv_gcn(y.transpose(2, 3)).transpose(1, 2).transpose(1,3)
 
         x = input 
@@ -1357,19 +1318,17 @@ class LSTM_plus(nn.Module):# LSTM in L89
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
 
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
+           
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
+            
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  
 
-            # 使用门控信号控制每部分的贡献
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
+            
             output = part1 + part2 + part3
         return output
 
@@ -1391,8 +1350,7 @@ class OTSGGCN_plus(nn.Module):#OTSGGCN in L227
         self.supports = supports
         self.bn = BatchNorm2d(in_dim, affine=False)
         self.h = Parameter(torch.ones(num_nodes, num_nodes), requires_grad=True)
-        # nn.init.uniform_(self.h, a=0, b=0.0001)
-        #plus处如下
+       
         self.first_conv = nn.ConvTranspose2d(in_channels=1, out_channels=num_nodes, kernel_size=(1, 1))
         self.inv_gcn = mgcn_depoly(1,num_nodes,len(supports))
 
@@ -1409,14 +1367,14 @@ class OTSGGCN_plus(nn.Module):#OTSGGCN in L227
         # input [b,1,sitenum,pre_len]
         # 1
         # y = self.first_conv(assist_ten[:, :, 0, :].unsqueeze(1)).transpose(1, 2)
-        # 3
+        # 2
         y = assist_ten[:, :, 0, :].unsqueeze(1) # 压缩站点维度再扩到第2维度 [b,1，len,1] 
         y = self.inv_gcn(y.transpose(2, 3)).transpose(1, 2).transpose(1,3)
        
         ######
         # y should be [b,len,sitenum,1]
         # x should be[b,1,sitenum,pre_len]
-        x = input #self.generate_ts_token(input)
+        x = input 
         mask = (self.supports[0] != 0).float()
         A = self.h * mask
         d = 1 / (torch.sum(A, -1) + 0.0001)
@@ -1425,30 +1383,26 @@ class OTSGGCN_plus(nn.Module):#OTSGGCN in L227
         A1 = torch.eye(self.num_nodes).to(self.device) - A
         A1=F.dropout(A1,0.1)
 
-        x = self.block1(x, A1)# [b,1,n,len]-->[b,32,n,len]
-        x = self.block2(x, A1)# [b,32,n,len]
-        x = self.block3(x, A1)# [b,32,n,len]
-        x = self.conv1(x)  # [b,32,n,len]->[b,12,n,1]
-        # print(x.shape,y.shape)
+        x = self.block1(x, A1)
+        x = self.block2(x, A1)
+        x = self.block3(x, A1)
+        x = self.conv1(x)  
         if self.disagg_type == 1:
             w0, w1, w2 = F.softmax(self.W)
             output = w0 * x + w1 * torch.tanh(y) * x + w2 * torch.sigmoid(y) * x 
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
-
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
+            
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
+            
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  
 
-            # 使用门控信号控制每部分的贡献
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
+
             output = part1 + part2 + part3
         return output
 
@@ -1468,7 +1422,7 @@ class STGCN_plus(nn.Module):#STFCN in L145
                             stride=(1, 1), bias=True)
         self.supports = supports
         self.bn = BatchNorm2d(in_dim, affine=False)
-        # plus in there
+        
         self.first_conv = nn.ConvTranspose2d(in_channels=1, out_channels=num_nodes, kernel_size=(1, 1))
         self.inv_gcn = mgcn_depoly(1,num_nodes,len(supports))
         self.W = nn.Parameter(torch.tensor([1, 0, 0], dtype=torch.float))
@@ -1502,19 +1456,16 @@ class STGCN_plus(nn.Module):#STFCN in L145
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
 
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
 
-            # 使用门控信号控制每部分的贡献
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1) 
+
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
+
             output = part1 + part2 + part3
         return output
 
@@ -1551,14 +1502,14 @@ class GRCN_plus(nn.Module):#GRCN in L 171
         y = assist_ten[:, :, 0, :].unsqueeze(1) 
         y = self.inv_gcn(y.transpose(2, 3)).transpose(1, 2).transpose(1,3)
         x = input
-        # x = self.bn(input)
+        
         
         A=self.supports[0]
         d=1/(torch.sum(A,-1)+0.0001)
         D=torch.diag_embed(d)
         A=torch.matmul(D,A)
 
-        adj= A #F.dropout(A,0.5)
+        adj= A 
         x = self.block1(x, adj)
         x = self.block2(x, adj)
         x = self.conv1(x)
@@ -1568,19 +1519,17 @@ class GRCN_plus(nn.Module):#GRCN in L 171
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
 
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
+           
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
 
-            # 使用门控信号控制每部分的贡献
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  
+
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
+
             output = part1 + part2 + part3
         return output
 
@@ -1612,7 +1561,6 @@ class ASTGCN_plus(nn.Module):# ASTGCN in L35
         y = assist_ten[:, :, 0, :].unsqueeze(1) 
         y = self.inv_gcn(y.transpose(2, 3)).transpose(1, 2).transpose(1,3)
 
-        #x = self.bn(input)
         x = input
         A=self.supports[0]
         d=1/(torch.sum(A,-1)+0.0001)
@@ -1630,19 +1578,16 @@ class ASTGCN_plus(nn.Module):# ASTGCN in L35
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
 
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
 
-            # 使用门控信号控制每部分的贡献
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  
+
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
+
             output = part1 + part2 + part3
         return output
 
@@ -1745,20 +1690,17 @@ class  Autoformer_plus(nn.Module):
             output = w0 * x + w1 * torch.tanh(y) * x + w2 * torch.sigmoid(y) * x 
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
-
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
+         
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
 
-            # 使用门控信号控制每部分的贡献
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  
+
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
+
             output = part1 + part2 + part3
         return output
 class  TimesNet_plus(nn.Module):
@@ -1829,35 +1771,29 @@ class  TimesNet_plus(nn.Module):
         elif self.disagg_type == 2:
             batch, length, feature, _ = x.size()
 
-            # 由于最后一维是1，我们可以直接将x和y展平为[Batch * Length, Feature]
             x_flat = x.reshape(batch * length, feature)
             y_flat = y.reshape(batch * length, feature)
-            # feature的压缩,改成3个通道
-            # 计算门控信号
-            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  # 输出维度为[Batch * Length, 3]
-            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  # 转换回[Batch, Length, 3]并应用softmax
 
-            # 使用门控信号控制每部分的贡献
+            gates = self.swish(self.gate1(x_flat) + self.gate2(y_flat))  
+            gates = F.softmax(gates, dim=-1).view(batch, length, 3, 1)  
+
             part1 = gates[:, :, 0, :].unsqueeze(2) * self.mish(x)
             part2 = gates[:, :, 1, :].unsqueeze(2) * torch.tanh(y) 
             part3 = gates[:, :, 2, :].unsqueeze(2) * torch.sigmoid(y) 
-            # 融合这三部分
+
             output = part1 + part2 + part3
         return output
 # Informer d_model=dimension of multi-head attention’s output
 class Informer(nn.Module):
     def __init__(self, enc_in, dec_in, c_out, out_len,
                 factor=3, d_model=128, n_heads=8, e_layers=2, d_layers=1, d_ff=256, # 512 1024
-                dropout=0.05, attn='prob', embed='fixed', freq='t', activation='gelu', #timeF跑不了我们的数据
+                dropout=0.05, attn='prob', embed='fixed', freq='t', activation='gelu', #timeF doesn't fit data
                 output_attention = False, distil=True, mix=True,
                 device=torch.device('cuda:0')):
         super(Informer, self).__init__()
         self.pred_len = out_len
         self.attn = attn
         self.output_attention = output_attention
-        # add for HGCN
-        #self.conv1=Conv2d(out_len, out_len, kernel_size=(1, 1), padding=(0, 0),
-        #                  stride=(1, 1), bias=True) # this config let the output be [batchsize,out_len,kernel_size]
 
         # Encoding
         self.enc_embedding = DataEmbedding(enc_in, d_model, embed, freq, dropout)
@@ -1900,8 +1836,7 @@ class Informer(nn.Module):
             ],
             norm_layer=torch.nn.LayerNorm(d_model)
         )
-        # self.end_conv1 = nn.Conv1d(in_channels=label_len+out_len, out_channels=out_len, kernel_size=1, bias=True)
-        # self.end_conv2 = nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=1, bias=True)
+       
         self.projection = nn.Linear(d_model, c_out, bias=True)
         
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
@@ -1913,10 +1848,6 @@ class Informer(nn.Module):
         dec_out = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
         dec_out = self.projection(dec_out)
         
-        # dec_out = self.end_conv1(dec_out)
-        # dec_out = self.end_conv2(dec_out.transpose(2,1)).transpose(1,2)
-        
-        # x = self.conv1(dec_out[:,-self.pred_len:,:].unsqueeze(2)).squeeze(2)
         if self.output_attention:
             return dec_out[:,-self.pred_len:,:], attns
         else:
@@ -1994,13 +1925,13 @@ class Autoformer(nn.Module):
         # decomp init
         mean = torch.mean(x_enc, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
         zeros = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]], device=x_enc.device)
-        seasonal_init, trend_init = self.decomp(x_enc) # [64 12 2156] [64 12 2156]
-        trend_init = torch.cat([trend_init[:, :-self.label_len, :], mean], dim=1)#[64 12 2156]
-        seasonal_init = torch.cat([seasonal_init[:, :-self.label_len, :], zeros], dim=1)#[64 12 2156]
+        seasonal_init, trend_init = self.decomp(x_enc) 
+        trend_init = torch.cat([trend_init[:, :-self.label_len, :], mean], dim=1)
+        seasonal_init = torch.cat([seasonal_init[:, :-self.label_len, :], zeros], dim=1)
         # enc
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
         enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
-        # dec [64 24 2156] [64 12 4]
+        # dec 
         dec_out = self.dec_embedding(seasonal_init, x_mark_dec)
         seasonal_part, trend_part = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask,
                                                  trend=trend_init)
@@ -2013,9 +1944,6 @@ class Autoformer(nn.Module):
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]
 
 class N_BEATS(nn.Module):
-    """
-    Create N-BEATS generic model.
-    """
     def __init__(self, input_size, output_size, stacks = 10, layers = 2, layer_size = 256,
                 device=torch.device('cuda:0')):
         super(N_BEATS, self).__init__()
@@ -2028,7 +1956,7 @@ class N_BEATS(nn.Module):
                                     for _ in range(stacks)])
     def forward(self, input):
         x = input 
-        residuals = x.flip(dims=(3,))#反转时间维度？需要连带翻动2维 [64,1,194,12]
+        residuals = x.flip(dims=(3,))
         # input_mask = input_mask.flip(dims=(1,))
         forecast = x[:, :, :, -1:]# [64,1,194,1]
         for i, block in enumerate(self.blocks):
@@ -2105,16 +2033,6 @@ class EncoderModel(nn.ModuleList):
                        filter_type=self.filter_type) for _ in range(self.num_rnn_layers)])
 
     def forward(self, inputs, hidden_state=None):
-        """
-        Encoder forward pass.
-
-        :param inputs: shape (batch_size, self.num_nodes * self.input_dim)
-        :param hidden_state: (num_layers, batch_size, self.hidden_state_size)
-               optional, zeros if not provided
-        :return: output: # shape (batch_size, self.hidden_state_size)
-                 hidden_state # shape (num_layers, batch_size, self.hidden_state_size)
-                 (lower indices mean lower layers)
-        """
         batch_size, _ = inputs.size()
         if hidden_state is None:
             hidden_state = torch.zeros((self.num_rnn_layers, batch_size, self.hidden_state_size),
@@ -2149,16 +2067,6 @@ class DecoderModel(nn.Module):
                        filter_type=self.filter_type) for _ in range(self.num_rnn_layers)])
 
     def forward(self, inputs, hidden_state=None):
-        """
-        Decoder forward pass.
-
-        :param inputs: shape (batch_size, self.num_nodes * self.output_dim)
-        :param hidden_state: (num_layers, batch_size, self.hidden_state_size)
-               optional, zeros if not provided
-        :return: output: # shape (batch_size, self.num_nodes * self.output_dim)
-                 hidden_state # shape (num_layers, batch_size, self.hidden_state_size)
-                 (lower indices mean lower layers)
-        """
         hidden_states = []
         output = inputs
         for layer_num, dcgru_layer in enumerate(self.dcgru_layers):
@@ -2175,7 +2083,7 @@ class DCRNN(nn.Module):
         super(DCRNN,self).__init__()
         adj_mx=supports[0].cpu().numpy()
         self.num_nodes = num_nodes
-        self.encoder_model = EncoderModel( device, num_nodes, dropout, adj_mx, in_dim, seq_len)# in_dim指的是内部维度
+        self.encoder_model = EncoderModel( device, num_nodes, dropout, adj_mx, in_dim, seq_len)
         self.decoder_model = DecoderModel( device, num_nodes, dropout, adj_mx, in_dim, horizon)
         self.cl_decay_steps = 2000 #1000
         self.use_curriculum_learning = True 
@@ -2185,11 +2093,6 @@ class DCRNN(nn.Module):
                 self.cl_decay_steps + np.exp(batches_seen / self.cl_decay_steps))
 
     def encoder(self, inputs):
-        """
-        encoder forward pass on t time steps
-        :param inputs: shape (seq_len, batch_size, num_sensor * input_dim)
-        :return: encoder_hidden_state: (num_layers, batch_size, self.hidden_state_size)
-        """
         encoder_hidden_state = None
         for t in range(self.encoder_model.seq_len):
             _, encoder_hidden_state = self.encoder_model(inputs[t], encoder_hidden_state)
@@ -2197,13 +2100,6 @@ class DCRNN(nn.Module):
         return encoder_hidden_state
 
     def decoder(self, encoder_hidden_state, labels=None, batches_seen=None):
-        """
-        Decoder forward pass
-        :param encoder_hidden_state: (num_layers, batch_size, self.hidden_state_size)
-        :param labels: (self.horizon, batch_size, self.num_nodes * self.output_dim) [optional, not exist for inference]
-        :param batches_seen: global step [optional, not exist for inference]
-        :return: output: (self.horizon, batch_size, self.num_nodes * self.output_dim)
-        """
         batch_size = encoder_hidden_state.size(1)
         go_symbol = torch.zeros((batch_size, self.num_nodes * self.decoder_model.output_dim),
                                 device=self.device)
@@ -2225,14 +2121,7 @@ class DCRNN(nn.Module):
         return outputs
 
     def forward(self, inputs, labels=None, batches_seen=None):
-        """
-        seq2seq forward pass
-        :param inputs: shape (seq_len, batch_size, num_sensor * input_dim)
-        :param labels: shape (horizon, batch_size, num_sensor * output)
-        :param batches_seen: batches seen till now
-        :return: output: (self.horizon, batch_size, self.num_nodes * self.output_dim)
-        """
-        inputs = inputs.permute(2, 0, 1) # [batch_size,num_nodes, seq_len]转变成[seq_len, batch_size, num_nodes]
+        inputs = inputs.permute(2, 0, 1) # [batch_size,num_nodes, seq_len] to [seq_len, batch_size, num_nodes]
         labels = labels.permute(2, 0, 1)
         encoder_hidden_state = self.encoder(inputs)
         outputs = self.decoder(encoder_hidden_state, labels, batches_seen=batches_seen)
@@ -2242,14 +2131,11 @@ class DCRNN(nn.Module):
 
 # NHITS
 class NHITS(nn.Module):
-    """
-    Create NHITS generic model.
-    """
     def __init__(self, input_size, output_size, num_blocks=3, layers=3, layer_size=512,  
                  pool_kernel_sizes=[2, 2, 1],n_freq_downsample=[4, 2, 1],
                  device=torch.device('cuda:0')):
         super(NHITS, self).__init__()
-        self.output_size = output_size // n_freq_downsample[-1]# 最终预测长度
+        self.output_size = output_size // n_freq_downsample[-1]
         self.blocks = nn.ModuleList([NHITSBlock(input_size=input_size // pool_kernel_sizes[i],
                                                 theta_size=input_size + output_size // n_freq_downsample[i],
                                                 basis_function=IdentityBasis(backcast_size=input_size,
@@ -2267,11 +2153,11 @@ class NHITS(nn.Module):
             backcast, block_forecast = block(residuals)
             residuals = residuals - backcast# b 1 n len
             if block_forecast.size(-1) != self.output_size:
-                batch_size, channels, num_nodes, len = block_forecast.shape# 获取原始维度
-                tensor_reshaped = block_forecast.view(-1, num_nodes, len)#改为插值所需的三维数据
+                batch_size, channels, num_nodes, len = block_forecast.shape
+                tensor_reshaped = block_forecast.view(-1, num_nodes, len)
                 tensor_interpolated = F.interpolate(tensor_reshaped, size=self.output_size, mode='linear', align_corners=False)
-                block_forecast = tensor_interpolated.view(batch_size, channels, num_nodes, self.output_size)#展开前两维度
-            # 降采样后这一步len维度不匹配，需要插值
+                block_forecast = tensor_interpolated.view(batch_size, channels, num_nodes, self.output_size)
+
             forecast = forecast + block_forecast
         return forecast
 
@@ -2335,13 +2221,11 @@ class DeepAR(nn.Module):
             print("666")
             for t in range(self.pred_len):
                 # Generate prediction based on mu and sigma
-                last_mu = last_mu.clamp(min=1e-9)  # 确保 mu 不是负数或太接近零
-                last_sigma = last_sigma.clamp(min=1e-9)  # 避免 sigma 为零或负数
-                # distribution = torch.distributions.normal.Normal(last_mu, last_sigma)
-                # next_pred = distribution.sample().unsqueeze(1)
-                eps = torch.randn_like(last_sigma)  # 从标准正态分布中采样
-                next_pred = last_mu + last_sigma * eps  # 变换到目标分布
-                next_pred = next_pred.unsqueeze(1)  # 增加一个维度
+                last_mu = last_mu.clamp(min=1e-9)  
+                last_sigma = last_sigma.clamp(min=1e-9)  
+                eps = torch.randn_like(last_sigma)  # Sampling from a standard normal distribution
+                next_pred = last_mu + last_sigma * eps  
+                next_pred = next_pred.unsqueeze(1)  
 
                 output, (hidden, cell) = self.lstm(next_pred, (hidden, cell))
 
@@ -2352,10 +2236,10 @@ class DeepAR(nn.Module):
         else :
             for t in range(self.pred_len):
                 # Generate prediction based on mu and sigma
-                last_mu = last_mu.clamp(min=1e-9)  # 确保 mu 不是负数或太接近零
-                last_sigma = last_sigma.clamp(min=1e-9)  # 避免 sigma 为零或负数
+                last_mu = last_mu.clamp(min=1e-9) 
+                last_sigma = last_sigma.clamp(min=1e-9)  
 
-                next_pred = last_mu.unsqueeze(1)  # 增加一个维度
+                next_pred = last_mu.unsqueeze(1)  
 
                 output, (hidden, cell) = self.lstm(next_pred, (hidden, cell))
 
