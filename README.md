@@ -1,5 +1,8 @@
 # ELASTIC
 
+## Introduction
+
+ELASTIC introduces a novel cloud-edge collaborative approach for edge workload forecasting, addressing the inefficiencies of traditional methods by integrating inter-site correlations. This project features a global aggregation layer for enhanced time efficiency and a local disaggregation layer to improve accuracy. Tested with datasets from Alibaba ENS, ELASTIC demonstrates superior performance, reducing both time consumption and communication costs.
 
 The code is built on https://github.com/guokan987/HGCN.
 
