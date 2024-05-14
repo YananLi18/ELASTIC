@@ -100,10 +100,11 @@ python train.py --device 0 --model TimesNet --type CPU --data All_full  --site n
 If you find this repo useful, please cite our paper.
 
 ```
-@inproceedings{li2024elastic,
-  title={ELASTIC: Edge Workload Forecasting based on Collaborative Cloud-Edge Deep Learning},
-  author={Yanan Li and Penghong Zhao and Xiao Ma and Haitao Yuan and Zhe Fu and Mengwei Xu and Shangguang Wang},
-  booktitle={},
-  year={2024},
+@inproceedings{li2023elastic,
+  title={ELASTIC: edge workload forecasting based on collaborative cloud-edge deep learning},
+  author={Li, Yanan and Yuan, Haitao and Fu, Zhe and Ma, Xiao and Xu, Mengwei and Wang, Shangguang},
+  booktitle={Proceedings of the ACM Web Conference 2023},
+  pages={3056--3066},
+  year={2023}
 }
 ```
